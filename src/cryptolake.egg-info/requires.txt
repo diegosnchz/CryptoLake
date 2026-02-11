@@ -1,0 +1,13 @@
+pyspark
+confluent-kafka
+websockets
+pydantic-settings
+fastapi
+streamlit
+pyiceberg[s3fs]
+dbt-core
+dbt-spark
+boto3
+pandas
+requests
+structlog

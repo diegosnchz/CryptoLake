@@ -7,8 +7,8 @@ import sys
 SERVICES = {
     "MinIO": ("localhost", 9000),
     "Kafka": ("localhost", 9092), # Externally mapped port
-    "Spark Master": ("localhost", 8080),
-    "Airflow Webserver": ("localhost", 8081),
+    "Spark Master": ("localhost", 8082),
+    "Airflow Webserver": ("localhost", 8083),
     "Iceberg REST": ("localhost", 8181)
 }
 

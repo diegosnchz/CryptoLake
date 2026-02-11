@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 def create_spark_session():
     return SparkSession.builder \
         .appName("CryptoLake-StreamToBronze") \
+        .config("spark.sql.caseSensitive", "true") \
         .getOrCreate()
 
 def main():

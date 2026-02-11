@@ -11,6 +11,6 @@ pydantic-settings
 fastapi
 streamlit
 pyiceberg[s3fs]
-dbt-core
-dbt-spark
+# dbt-core
+# dbt-spark
 structlog

@@ -20,8 +20,8 @@ class BaseExtractor(ABC):
     def __init__(self, bucket_name: str):
         self.bucket_name = bucket_name
         self.minio_endpoint = os.getenv("MINIO_ENDPOINT", "http://localhost:9000")
-        self.minio_access_key = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
-        self.minio_secret_key = os.getenv("MINIO_SECRET_KEY", "minioadmin")
+        self.minio_access_key = os.getenv("MINIO_ACCESS_KEY")
+        self.minio_secret_key = os.getenv("MINIO_SECRET_KEY")
         
         self.s3_client = boto3.client('s3',
                                       endpoint_url=self.minio_endpoint,

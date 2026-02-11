@@ -1,0 +1,15 @@
+apache-airflow-providers-apache-spark
+pyspark==3.5.0
+confluent-kafka
+websockets
+pandas
+s3fs
+minio
+pyarrow
+pydantic-settings
+fastapi
+streamlit
+pyiceberg[s3fs]
+dbt-core
+dbt-spark
+structlog

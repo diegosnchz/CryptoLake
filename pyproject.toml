@@ -1,0 +1,29 @@
+[project]
+name = "cryptolake"
+version = "0.1.0"
+description = "End-to-End Crypto Data Lakehouse with Iceberg, Spark, and Kafka"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "pyspark",
+    "confluent-kafka",
+    "websockets",
+    "pydantic-settings",
+    "fastapi",
+    "streamlit",
+    "pyiceberg[s3fs]",
+    "dbt-core",
+    "dbt-spark",
+    "boto3",
+    "pandas",
+    "requests",
+    "structlog",
+]
+
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

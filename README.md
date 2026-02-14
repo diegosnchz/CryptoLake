@@ -125,3 +125,19 @@ SELECT symbol, trade_date, total_volume, price_range, trades FROM cryptolake.gol
 
 ## dbt
 Se incluye proyecto mínimo `src/transformation/dbt_cryptolake` porque `dbt-spark` ya está en stack. Se recomienda evolucionar con tests/sources en PR siguiente para entornos multi-job.
+
+## Validate Bronze end-to-end
+1. `cp .env.example .env`
+2. `docker-compose --env-file .env up -d minio mc iceberg-rest spark-master spark-worker`
+3. `make bootstrap-iceberg`
+4. `make spark-sql-check`
+5. `docker-compose --env-file .env up -d zookeeper kafka kafka-ui producer`
+6. `make kafka-peek`
+7. `make bronze-available-now`
+8. `docker exec spark-master /opt/spark/bin/spark-sql -e "SELECT count(*) AS n FROM cryptolake.bronze.futures_trades;"`
+
+Expected result: step 8 returns `n > 0`.
+
+Notes:
+- Spark workers run with `AWS_REGION/AWS_DEFAULT_REGION=us-east-1` so Iceberg `S3FileIO` can write to MinIO without region errors.
+- Producer runs as `python -m src.ingestion.streaming.binance_producer` to avoid PYTHONPATH hacks.

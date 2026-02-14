@@ -31,7 +31,10 @@ spark-sql-check:
 	$(SPARK_EXEC) /opt/spark/bin/spark-sql -e "SHOW NAMESPACES IN cryptolake; SHOW TABLES IN cryptolake.bronze; DESCRIBE TABLE cryptolake.bronze.futures_trades;"
 
 run-bronze:
-	docker exec spark-master /opt/spark/bin/spark-submit /opt/spark/work-dir/src/processing/streaming/stream_to_bronze.py
+	$(SPARK_EXEC) /opt/spark/bin/spark-submit /opt/spark/work-dir/src/processing/streaming/stream_to_bronze.py
+
+bronze-available-now:
+	$(SPARK_EXEC) /opt/spark/bin/spark-submit /opt/spark/work-dir/src/processing/streaming/stream_to_bronze.py --mode available-now
 
 run-silver:
 	docker exec spark-master /opt/spark/bin/spark-submit /opt/spark/work-dir/src/processing/batch/bronze_to_silver.py
@@ -47,6 +50,9 @@ logs:
 
 kafka-create-topics:
 	docker exec kafka kafka-topics --create --if-not-exists --bootstrap-server localhost:9092 --partitions 1 --replication-factor 1 --topic $(TOPIC)
+
+kafka-peek:
+	docker exec kafka kafka-console-consumer --bootstrap-server localhost:9092 --topic $(TOPIC) --max-messages 3 --timeout-ms 30000
 
 lint:
 	ruff check src tests

@@ -3,6 +3,7 @@ YELLOW := $(shell tput -Txterm setaf 3)
 BLUE   := $(shell tput -Txterm setaf 4)
 RESET  := $(shell tput -Txterm sgr0)
 TOPIC ?= $(or $(KAFKA_TOPIC_PRICES_REALTIME),$(KAFKA_TOPIC_FUTURES),binance_futures_realtime)
+SPARK_EXEC ?= docker exec -e PYTHONPATH=/opt/spark/work-dir spark-master
 
 setup:
 	@echo "${BLUE}Creating directory structure...${RESET}"
@@ -18,8 +19,16 @@ up:
 	docker-compose up -d --build
 	@echo "${GREEN}✔ CryptoLake running${RESET}"
 
-bootstrap:
-	docker exec spark-master /opt/spark/bin/spark-submit /opt/spark/work-dir/src/processing/bootstrap/bootstrap_iceberg.py
+bootstrap: bootstrap-iceberg
+
+bootstrap-iceberg:
+	$(SPARK_EXEC) /opt/spark/bin/spark-submit /opt/spark/work-dir/src/processing/bootstrap/bootstrap_iceberg.py
+
+spark-sql:
+	$(SPARK_EXEC) /opt/spark/bin/spark-sql
+
+spark-sql-check:
+	$(SPARK_EXEC) /opt/spark/bin/spark-sql -e "SHOW NAMESPACES IN cryptolake; SHOW TABLES IN cryptolake.bronze; DESCRIBE TABLE cryptolake.bronze.futures_trades;"
 
 run-bronze:
 	docker exec spark-master /opt/spark/bin/spark-submit /opt/spark/work-dir/src/processing/streaming/stream_to_bronze.py

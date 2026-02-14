@@ -154,3 +154,9 @@ Notes:
 - Airflow DAG `bronze_to_silver_1m` orchestrates the silver batch pipeline only.
 - Task order: dependency healthcheck -> `bronze_to_silver_1m.py` -> `check_silver_count.py`.
 - Launch with `make airflow-up` and trigger with `make airflow-trigger-silver`.
+
+## Silver serving (Streamlit)
+- `make serve` starts `streamlit` with `src/serving/streamlit_app.py`.
+- The app reads latest rows from `cryptolake.silver.ohlcv_1m` and renders table + close trend chart.
+- Streamlit is exposed on `http://localhost:8502`.
+- `AWS_REGION/AWS_DEFAULT_REGION=us-east-1` is set for Airflow/API/Streamlit containers to avoid Iceberg S3 region errors.

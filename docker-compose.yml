@@ -28,6 +28,7 @@ x-spark-common: &spark-common
 
 x-airflow-common: &airflow-common
   build: ./docker/airflow
+  user: "${AIRFLOW_UID:-50000}:0"
   environment:
     - AIRFLOW__CORE__EXECUTOR=LocalExecutor
     - AIRFLOW__CORE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${AIRFLOW_DB_USER}:${AIRFLOW_DB_PASSWORD}@postgres/${AIRFLOW_DB_NAME}
@@ -36,6 +37,9 @@ x-airflow-common: &airflow-common
     - AIRFLOW__WEBSERVER__EXPOSE_CONFIG=True
     - _AIRFLOW_DB_UPGRADE=true
     - SPARK_MASTER=${SPARK_MASTER}
+    - PYTHONPATH=/opt/airflow
+    - AWS_REGION=us-east-1
+    - AWS_DEFAULT_REGION=us-east-1
     - KAFKA_TOPIC_PRICES_REALTIME=${KAFKA_TOPIC_PRICES_REALTIME:-${KAFKA_TOPIC_FUTURES:-binance_futures_realtime}}
     - KAFKA_TOPIC_FUTURES=${KAFKA_TOPIC_FUTURES:-${KAFKA_TOPIC_PRICES_REALTIME:-binance_futures_realtime}}
   volumes:
@@ -187,9 +191,14 @@ services:
   api:
     build: ./docker/airflow
     container_name: api
-    command: uvicorn src.api.main:app --host 0.0.0.0 --port 8000
+    user: "${AIRFLOW_UID:-50000}:0"
+    entrypoint: /bin/bash
+    command: -lc "uvicorn src.api.main:app --host 0.0.0.0 --port 8000"
     ports: ["8000:8000"]
     environment:
+      - PYTHONPATH=/opt/airflow
+      - AWS_REGION=us-east-1
+      - AWS_DEFAULT_REGION=us-east-1
       - MINIO_ENDPOINT=${MINIO_ENDPOINT}
       - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY}
       - MINIO_SECRET_KEY=${MINIO_SECRET_KEY}
@@ -202,11 +211,19 @@ services:
   streamlit:
     build: ./docker/airflow
     container_name: streamlit
-    command: streamlit run /opt/airflow/src/ui/app.py --server.port 8501 --server.address 0.0.0.0
-    ports: ["8501:8501"]
+    user: "${AIRFLOW_UID:-50000}:0"
+    entrypoint: /bin/bash
+    command: -lc "streamlit run /opt/airflow/src/serving/streamlit_app.py --server.port 8501 --server.address 0.0.0.0"
+    ports: ["8502:8501"]
+    environment:
+      - PYTHONPATH=/opt/airflow
+      - AWS_REGION=us-east-1
+      - AWS_DEFAULT_REGION=us-east-1
     volumes:
       - ./src:/opt/airflow/src
-    depends_on: [api]
+    depends_on:
+      - minio
+      - iceberg-rest
 
   postgres:
     image: postgres:13

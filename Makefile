@@ -57,6 +57,9 @@ airflow-up:
 airflow-trigger-silver:
 	docker exec airflow-webserver airflow dags trigger bronze_to_silver_1m
 
+serve:
+	docker-compose up -d streamlit
+
 logs:
 	docker-compose logs -f
 

@@ -6,7 +6,7 @@ websockets
 pandas
 s3fs
 minio
-pyarrow
+pyarrow>=15.0.0
 pydantic-settings
 fastapi
 uvicorn

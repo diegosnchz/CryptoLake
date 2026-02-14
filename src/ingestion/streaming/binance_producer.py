@@ -27,7 +27,11 @@ class BinanceFuturesKafkaProducer:
     async def run(self) -> None:
         streams = "/".join([f"{symbol}@aggTrade" for symbol in settings.symbols])
         ws_url = f"{settings.binance_ws_base_url}?streams={streams}"
-        logger.info("connecting_websocket", ws_url=ws_url, topic=settings.kafka_topic_futures)
+        logger.info(
+            "connecting_websocket",
+            ws_url=ws_url,
+            topic=settings.kafka_topic_prices_realtime,
+        )
 
         async with websockets.connect(ws_url, ping_interval=20, ping_timeout=20) as websocket:
             while True:
@@ -39,7 +43,7 @@ class BinanceFuturesKafkaProducer:
                 event = parse_binance_aggtrade(data["data"], ingest_ts=datetime.now(timezone.utc))
                 encoded = event.model_dump_json()
                 self.producer.produce(
-                    settings.kafka_topic_futures,
+                    settings.kafka_topic_prices_realtime,
                     key=event.symbol,
                     value=encoded,
                     callback=self._delivery_report,

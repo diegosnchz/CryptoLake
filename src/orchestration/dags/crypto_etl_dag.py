@@ -22,7 +22,10 @@ def _kafka_reachable() -> bool:
 
 
 def _topic_hint() -> None:
-    topic = os.getenv("KAFKA_TOPIC_FUTURES", "binance_futures_realtime")
+    topic = os.getenv(
+        "KAFKA_TOPIC_PRICES_REALTIME",
+        os.getenv("KAFKA_TOPIC_FUTURES", "binance_futures_realtime"),
+    )
     print(f"Using Kafka topic: {topic}")
 
 

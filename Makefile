@@ -2,6 +2,7 @@ GREEN  := $(shell tput -Txterm setaf 2)
 YELLOW := $(shell tput -Txterm setaf 3)
 BLUE   := $(shell tput -Txterm setaf 4)
 RESET  := $(shell tput -Txterm sgr0)
+TOPIC ?= $(or $(KAFKA_TOPIC_PRICES_REALTIME),$(KAFKA_TOPIC_FUTURES),binance_futures_realtime)
 
 setup:
 	@echo "${BLUE}Creating directory structure...${RESET}"
@@ -36,7 +37,7 @@ logs:
 	docker-compose logs -f
 
 kafka-create-topics:
-	docker exec kafka kafka-topics --create --if-not-exists --bootstrap-server localhost:9092 --partitions 1 --replication-factor 1 --topic binance_futures_realtime
+	docker exec kafka kafka-topics --create --if-not-exists --bootstrap-server localhost:9092 --partitions 1 --replication-factor 1 --topic $(TOPIC)
 
 lint:
 	ruff check src tests

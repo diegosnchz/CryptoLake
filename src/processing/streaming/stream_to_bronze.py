@@ -18,7 +18,7 @@ def main() -> None:
     raw = (
         spark.readStream.format("kafka")
         .option("kafka.bootstrap.servers", settings.kafka_bootstrap_servers)
-        .option("subscribe", settings.kafka_topic_futures)
+        .option("subscribe", settings.kafka_topic_prices_realtime)
         .option("startingOffsets", "latest")
         .load()
     )

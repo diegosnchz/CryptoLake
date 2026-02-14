@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import List
 
-from pydantic import Field
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -12,7 +12,10 @@ class Settings(BaseSettings):
     log_level: str = Field("INFO", alias="LOG_LEVEL")
 
     kafka_bootstrap_servers: str = Field("kafka:29092", alias="KAFKA_BOOTSTRAP_SERVERS")
-    kafka_topic_futures: str = Field("binance_futures_realtime", alias="KAFKA_TOPIC_FUTURES")
+    kafka_topic_prices_realtime: str = Field(
+        "binance_futures_realtime",
+        validation_alias=AliasChoices("KAFKA_TOPIC_PRICES_REALTIME", "KAFKA_TOPIC_FUTURES"),
+    )
 
     binance_ws_base_url: str = Field("wss://fstream.binance.com/stream", alias="BINANCE_WS_BASE_URL")
     binance_symbols: str = Field("btcusdt,ethusdt,solusdt,bnbusdt", alias="BINANCE_SYMBOLS")
@@ -32,6 +35,11 @@ class Settings(BaseSettings):
 
     api_host: str = Field("0.0.0.0", alias="API_HOST")
     api_port: int = Field(8000, alias="API_PORT")
+
+    @property
+    def kafka_topic_futures(self) -> str:
+        # Backward-compatible accessor for modules still using legacy naming.
+        return self.kafka_topic_prices_realtime
 
     @property
     def symbols(self) -> List[str]:

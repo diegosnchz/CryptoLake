@@ -1,4 +1,6 @@
 import argparse
+import time
+from uuid import uuid4
 
 import structlog
 from pyspark.sql.functions import col, current_timestamp, from_json, lit, to_date, when
@@ -32,6 +34,10 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> None:
+    run_id = str(uuid4())
+    started_at = time.perf_counter()
+    logger.info("job_started", job="stream_to_bronze", run_id=run_id)
+
     args = _build_parser().parse_args()
     spark = build_spark_session("CryptoLake-StreamToBronze")
     catalog = settings.iceberg_catalog_name
@@ -95,12 +101,15 @@ def main() -> None:
     query = writer.toTable(table)
     logger.info(
         "bronze_stream_started",
+        run_id=run_id,
         table=table,
         mode=args.mode,
         topic=settings.kafka_topic_prices_realtime,
         checkpoint=checkpoint,
     )
     query.awaitTermination()
+    duration_ms = int((time.perf_counter() - started_at) * 1000)
+    logger.info("job_finished", job="stream_to_bronze", run_id=run_id, duration_ms=duration_ms)
 
 
 if __name__ == "__main__":

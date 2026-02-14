@@ -160,3 +160,8 @@ Notes:
 - The app reads latest rows from `cryptolake.silver.ohlcv_1m` and renders table + close trend chart.
 - Streamlit is exposed on `http://localhost:8502`.
 - `AWS_REGION/AWS_DEFAULT_REGION=us-east-1` is set for Airflow/API/Streamlit containers to avoid Iceberg S3 region errors.
+
+## Local reliability helpers
+- `make doctor` checks Docker daemon, MinIO health, Iceberg REST health, and Kafka reachability.
+- `make reset-kafka` stops/removes Kafka containers and deletes only Kafka data volumes (`*_kafka_data`).
+- Batch/stream jobs now log `run_id`, start/end events, and `duration_ms` for easier tracing.

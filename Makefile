@@ -60,6 +60,14 @@ airflow-trigger-silver:
 serve:
 	docker-compose up -d streamlit
 
+doctor:
+	python scripts/doctor.py
+
+reset-kafka:
+	docker-compose stop producer kafka-ui kafka zookeeper || true
+	docker-compose rm -sf producer kafka-ui kafka zookeeper || true
+	@for v in $$(docker volume ls -q | grep '_kafka_data$$' || true); do docker volume rm $$v; done
+
 logs:
 	docker-compose logs -f
 

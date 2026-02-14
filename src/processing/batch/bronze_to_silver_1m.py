@@ -1,4 +1,5 @@
 import time
+from uuid import uuid4
 
 import structlog
 from pyspark.sql import functions as F
@@ -12,7 +13,9 @@ logger = structlog.get_logger(__name__)
 
 
 def main() -> None:
+    run_id = str(uuid4())
     started_at = time.perf_counter()
+    logger.info("job_started", job="bronze_to_silver_1m", run_id=run_id)
     spark = build_spark_session("CryptoLake-BronzeToSilver1m")
     catalog = settings.iceberg_catalog_name
     source = f"{catalog}.bronze.futures_trades"
@@ -55,7 +58,12 @@ def main() -> None:
     rows_dropped = rows_in - rows_valid
 
     if rows_valid == 0:
-        logger.warning("silver_quality_no_valid_rows", rows_in=rows_in, rows_dropped=rows_dropped)
+        logger.warning(
+            "silver_quality_no_valid_rows",
+            run_id=run_id,
+            rows_in=rows_in,
+            rows_dropped=rows_dropped,
+        )
         return
 
     silver_df = (
@@ -88,12 +96,14 @@ def main() -> None:
     duration_ms = int((time.perf_counter() - started_at) * 1000)
     logger.info(
         "silver_1m_overwrite_done",
+        run_id=run_id,
         table=target,
         rows_in=rows_in,
         rows_valid=rows_valid,
         rows_dropped=rows_dropped,
         duration_ms=duration_ms,
     )
+    logger.info("job_finished", job="bronze_to_silver_1m", run_id=run_id, duration_ms=duration_ms)
 
 
 if __name__ == "__main__":

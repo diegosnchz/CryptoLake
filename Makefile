@@ -39,6 +39,12 @@ bronze-available-now:
 run-silver:
 	docker exec spark-master /opt/spark/bin/spark-submit /opt/spark/work-dir/src/processing/batch/bronze_to_silver.py
 
+silver-1m:
+	$(SPARK_EXEC) /opt/spark/bin/spark-submit /opt/spark/work-dir/src/processing/batch/bronze_to_silver_1m.py
+
+spark-sql-check-silver:
+	$(SPARK_EXEC) /opt/spark/bin/spark-sql -e "SHOW TABLES IN cryptolake.silver; SELECT count(*) AS n FROM cryptolake.silver.ohlcv_1m;"
+
 run-gold:
 	docker exec spark-master /opt/spark/bin/spark-submit /opt/spark/work-dir/src/processing/gold/silver_to_gold_daily.py
 

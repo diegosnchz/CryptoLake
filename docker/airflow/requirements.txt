@@ -9,8 +9,9 @@ minio
 pyarrow
 pydantic-settings
 fastapi
+uvicorn
 streamlit
+altair
 pyiceberg[s3fs]
-# dbt-core
-# dbt-spark
 structlog
+requests

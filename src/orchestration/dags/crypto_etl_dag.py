@@ -1,87 +1,93 @@
-from airflow import DAG
-from airflow.providers.apache.spark.operators.spark_submit import SparkSubmitOperator
-from airflow.operators.python import PythonOperator
-from airflow.utils.dates import days_ago
-from datetime import timedelta
-import sys
 import os
+import socket
+from datetime import timedelta
 
-# Add src to path for PythonOperator imports if needed
-sys.path.append("/opt/airflow/src")
+from airflow import DAG
+from airflow.operators.bash import BashOperator
+from airflow.operators.python import PythonOperator
+from airflow.sensors.python import PythonSensor
+from airflow.utils.dates import days_ago
 
-# Default arguments
+SPARK_MASTER = os.getenv("SPARK_MASTER", "spark://spark-master:7077")
+KAFKA_BROKER_HOST = os.getenv("KAFKA_HEALTH_HOST", "kafka")
+KAFKA_BROKER_PORT = int(os.getenv("KAFKA_HEALTH_PORT", "29092"))
+
+
+def _kafka_reachable() -> bool:
+    try:
+        with socket.create_connection((KAFKA_BROKER_HOST, KAFKA_BROKER_PORT), timeout=5):
+            return True
+    except OSError:
+        return False
+
+
+def _topic_hint() -> None:
+    topic = os.getenv("KAFKA_TOPIC_FUTURES", "binance_futures_realtime")
+    print(f"Using Kafka topic: {topic}")
+
+
 default_args = {
-    'owner': 'airflow',
-    'depends_on_past': False,
-    'email_on_failure': False,
-    'email_on_retry': False,
-    'retries': 1,
-    'retry_delay': timedelta(minutes=5),
+    "owner": "airflow",
+    "depends_on_past": False,
+    "email_on_failure": False,
+    "email_on_retry": False,
+    "retries": 2,
+    "retry_delay": timedelta(minutes=2),
 }
 
-# Batch Processing DAG
 with DAG(
-    'cryptolake_batch_etl',
+    "ingest_realtime_to_bronze",
     default_args=default_args,
-    description='Batch ETL from Bronze to Silver',
-    schedule_interval=timedelta(minutes=15),
+    description="Validate dependencies and launch Spark structured streaming to Bronze",
+    schedule_interval=None,
     start_date=days_ago(1),
     catchup=False,
-) as dag_batch:
-
-    # Task: Bronze to Silver Transformation
-    # Assumes Spark Master is accessible at spark://spark-master:7077
-    bronze_to_silver = SparkSubmitOperator(
-        task_id='bronze_to_silver',
-        application='/opt/spark/work-dir/src/processing/batch/bronze_to_silver.py',
-        conn_id='spark_default', # Needs to be configured in Airflow UI or environment
-        conf={
-            "spark.master": "spark://spark-master:7077",
-            "spark.submit.deployMode": "client"
-        }
+) as dag_ingest:
+    wait_for_kafka = PythonSensor(
+        task_id="wait_for_kafka", python_callable=_kafka_reachable, poke_interval=15, timeout=300
+    )
+    print_topic = PythonOperator(task_id="print_topic", python_callable=_topic_hint)
+    bootstrap = BashOperator(
+        task_id="bootstrap_iceberg",
+        bash_command="python /opt/airflow/src/processing/bootstrap/bootstrap_iceberg.py",
+    )
+    start_bronze_stream = BashOperator(
+        task_id="start_bronze_stream",
+        bash_command=(
+            "spark-submit --master "
+            + SPARK_MASTER
+            + " /opt/airflow/src/processing/streaming/stream_to_bronze.py"
+        ),
     )
 
-# Batch Ingestion DAG (CoinGecko, Fear & Greed)
+    wait_for_kafka >> print_topic >> bootstrap >> start_bronze_stream
+
 with DAG(
-    'cryptolake_ingestion_batch',
+    "bronze_to_silver_1m",
     default_args=default_args,
-    description='Batch Ingestion from APIs',
-    schedule_interval=timedelta(hours=1),
+    description="Compute and upsert 1m OHLCV from Bronze to Silver",
+    schedule_interval=None,
     start_date=days_ago(1),
     catchup=False,
-) as dag_ingestion:
-
-    def run_coingecko_extractor():
-        # This is a simplifed execution. In production, consider DockerOperator or dedicated executor.
-        # We are importing functions or running scripts.
-        # For simplicity, we'll use os.system or similar if we haven't packaged it as a library.
-        # Better: Import the function.
-        # But we need dependencies. Airflow env has them.
-        import src.ingestion.batch.coingecko_extractor as cg
-        data = cg.fetch_coingecko_data()
-        if data:
-            import datetime
-            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"coingecko_markets_{timestamp}.json"
-            cg.save_to_minio(data, filename)
-
-    def run_fear_greed_extractor():
-        import src.ingestion.batch.fear_greed_extractor as fg
-        data = fg.fetch_fear_greed_data()
-        if data:
-            import datetime
-            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"fear_greed_{timestamp}.json"
-            fg.save_to_minio(data, filename)
-
-    task_coingecko = PythonOperator(
-        task_id='ingest_coingecko',
-        python_callable=run_coingecko_extractor
+) as dag_silver:
+    run_silver = BashOperator(
+        task_id="run_bronze_to_silver",
+        bash_command="spark-submit --master "
+        + SPARK_MASTER
+        + " /opt/airflow/src/processing/batch/bronze_to_silver.py",
     )
 
-    task_fear_greed = PythonOperator(
-        task_id='ingest_fear_greed',
-        python_callable=run_fear_greed_extractor
+with DAG(
+    "silver_to_gold_daily",
+    default_args=default_args,
+    description="Build daily gold stats from silver",
+    schedule_interval="@daily",
+    start_date=days_ago(1),
+    catchup=False,
+) as dag_gold:
+    run_gold = BashOperator(
+        task_id="run_silver_to_gold_daily",
+        bash_command="spark-submit --master "
+        + SPARK_MASTER
+        + " /opt/airflow/src/processing/gold/silver_to_gold_daily.py",
     )
-
-    [task_coingecko, task_fear_greed]

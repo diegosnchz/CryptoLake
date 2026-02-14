@@ -1,0 +1,8 @@
+name: dbt_cryptolake
+version: 1.0.0
+config-version: 2
+profile: dbt_cryptolake
+model-paths: ["models"]
+models:
+  dbt_cryptolake:
+    +materialized: table

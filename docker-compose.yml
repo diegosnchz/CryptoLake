@@ -11,12 +11,14 @@ x-spark-common: &spark-common
     - SPARK_RPC_ENCRYPTION_ENABLED=no
     - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
     - SPARK_SSL_ENABLED=no
-    # App Env
     - KAFKA_BOOTSTRAP_SERVERS=${KAFKA_BOOTSTRAP_SERVERS}
+    - KAFKA_TOPIC_FUTURES=${KAFKA_TOPIC_FUTURES}
     - MINIO_ENDPOINT=${MINIO_ENDPOINT}
     - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY}
     - MINIO_SECRET_KEY=${MINIO_SECRET_KEY}
     - MINIO_BUCKET_BRONZE=${MINIO_BUCKET_BRONZE}
+    - MINIO_BUCKET_SILVER=${MINIO_BUCKET_SILVER}
+    - MINIO_BUCKET_GOLD=${MINIO_BUCKET_GOLD}
   volumes:
     - ./src:/opt/spark/work-dir/src
     - ./data:/opt/spark/data
@@ -30,6 +32,8 @@ x-airflow-common: &airflow-common
     - AIRFLOW__CORE__LOAD_EXAMPLES=False
     - AIRFLOW__WEBSERVER__EXPOSE_CONFIG=True
     - _AIRFLOW_DB_UPGRADE=true
+    - SPARK_MASTER=${SPARK_MASTER}
+    - KAFKA_TOPIC_FUTURES=${KAFKA_TOPIC_FUTURES}
   volumes:
     - ./src/orchestration/dags:/opt/airflow/dags
     - ./src:/opt/airflow/src
@@ -38,21 +42,17 @@ x-airflow-common: &airflow-common
     - postgres
 
 services:
-  # --- MinIO (S3 Storage) ---
   minio:
     image: minio/minio
     container_name: minio
-    ports:
-      - "9000:9000"
-      - "9001:9001"
+    ports: ["9000:9000", "9001:9001"]
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
     command: server /data --console-address ":9001"
-    volumes:
-      - minio_data:/data
+    volumes: [minio_data:/data]
     healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:9000/minio/health/live" ]
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -63,26 +63,24 @@ services:
       minio:
         condition: service_healthy
     entrypoint: >
-      /bin/sh -c " mc alias set minio ${MINIO_ENDPOINT} ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD}; mc mb --ignore-existing minio/${MINIO_BUCKET_BRONZE}; mc mb --ignore-existing minio/cryptolake-silver; mc mb --ignore-existing minio/cryptolake-gold; exit 0; "
+      /bin/sh -c " mc alias set minio ${MINIO_ENDPOINT} ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD};
+      mc mb --ignore-existing minio/${MINIO_BUCKET_BRONZE};
+      mc mb --ignore-existing minio/${MINIO_BUCKET_SILVER};
+      mc mb --ignore-existing minio/${MINIO_BUCKET_GOLD}; exit 0; "
 
-  # --- Zookeeper ---
   zookeeper:
     image: confluentinc/cp-zookeeper:7.4.0
     container_name: zookeeper
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
-    ports:
-      - "2181:2181"
+    ports: ["2181:2181"]
 
-  # --- Kafka (Zookeeper Mode) ---
   kafka:
     image: confluentinc/cp-kafka:7.4.0
     container_name: kafka
-    ports:
-      - "9092:9092"
-    depends_on:
-      - zookeeper
+    ports: ["9092:9092"]
+    depends_on: [zookeeper]
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
@@ -94,21 +92,18 @@ services:
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
-      # Auto-create entry topics
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
     healthcheck:
       test: nc -z localhost 9092 || exit 1
       interval: 30s
       timeout: 10s
       retries: 5
-    volumes:
-      - kafka_data:/var/lib/kafka/data
+    volumes: [kafka_data:/var/lib/kafka/data]
 
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
     container_name: kafka-ui
-    ports:
-      - "8080:8080"
+    ports: ["8080:8080"]
     environment:
       KAFKA_CLUSTERS_0_NAME: cryptolake
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
@@ -116,58 +111,42 @@ services:
       kafka:
         condition: service_healthy
 
-  # --- Iceberg REST Catalog ---
   iceberg-rest:
     image: tabulario/iceberg-rest:latest
     container_name: iceberg-rest
-    ports:
-      - "8181:8181"
+    ports: ["8181:8181"]
     environment:
-      - CATALOG_WAREHOUSE=s3a://cryptolake-bronze/
+      - CATALOG_WAREHOUSE=s3a://${MINIO_BUCKET_BRONZE}/
       - CATALOG_IO__IMPL=org.apache.iceberg.aws.s3.S3FileIO
       - CATALOG_S3_ENDPOINT=http://minio:9000
       - CATALOG_S3_ACCESS__KEY__ID=${MINIO_ACCESS_KEY}
       - CATALOG_S3_SECRET__ACCESS__KEY=${MINIO_SECRET_KEY}
-      - CATALOG_S3_PATH__STYLE__ACCESS=true
       - CATALOG_S3_PATH_STYLE_ACCESS=true
-      - AWS_S3_PATH_STYLE_ACCESS=true
-      - CATALOG_PROPERTIES=s3.path-style-access=true
       - AWS_ACCESS_KEY_ID=${MINIO_ACCESS_KEY}
       - AWS_SECRET_ACCESS_KEY=${MINIO_SECRET_KEY}
       - AWS_REGION=us-east-1
     depends_on:
       minio:
         condition: service_healthy
-    healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:8181/health" ]
-      interval: 30s
-      timeout: 10s
-      retries: 5
 
-  # --- Spark ---
   spark-master:
     build: ./docker/spark
     container_name: spark-master
     command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master --ip spark-master --port 7077 --webui-port 8080
     environment:
       - SPARK_MODE=master
-      - SPARK_RPC_AUTHENTICATION_ENABLED=no
-      - SPARK_RPC_ENCRYPTION_ENABLED=no
-      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
-      - SPARK_SSL_ENABLED=no
-      # App Env
       - KAFKA_BOOTSTRAP_SERVERS=${KAFKA_BOOTSTRAP_SERVERS}
+      - KAFKA_TOPIC_FUTURES=${KAFKA_TOPIC_FUTURES}
       - MINIO_ENDPOINT=${MINIO_ENDPOINT}
       - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY}
       - MINIO_SECRET_KEY=${MINIO_SECRET_KEY}
       - MINIO_BUCKET_BRONZE=${MINIO_BUCKET_BRONZE}
-    ports:
-      - "8082:8080" # Changed to 8082 to avoid conflict with Kafka UI
-      - "7077:7077"
-    volumes:
-      - ./src:/opt/spark/work-dir/src
+      - MINIO_BUCKET_SILVER=${MINIO_BUCKET_SILVER}
+      - MINIO_BUCKET_GOLD=${MINIO_BUCKET_GOLD}
+    ports: ["8082:8080", "7077:7077"]
+    volumes: [./src:/opt/spark/work-dir/src]
     healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:8080" ]
+      test: ["CMD", "curl", "-f", "http://localhost:8080"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -179,7 +158,45 @@ services:
       spark-master:
         condition: service_healthy
 
-  # --- Airflow ---
+  producer:
+    build: ./docker/airflow
+    container_name: producer
+    command: python /opt/airflow/src/ingestion/streaming/binance_producer.py
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=${KAFKA_BOOTSTRAP_SERVERS}
+      - KAFKA_TOPIC_FUTURES=${KAFKA_TOPIC_FUTURES}
+      - BINANCE_SYMBOLS=${BINANCE_SYMBOLS}
+      - LOG_LEVEL=${LOG_LEVEL}
+    volumes:
+      - ./src:/opt/airflow/src
+    depends_on:
+      kafka:
+        condition: service_healthy
+
+  api:
+    build: ./docker/airflow
+    container_name: api
+    command: uvicorn src.api.main:app --host 0.0.0.0 --port 8000
+    ports: ["8000:8000"]
+    environment:
+      - MINIO_ENDPOINT=${MINIO_ENDPOINT}
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY}
+    volumes:
+      - ./src:/opt/airflow/src
+    depends_on:
+      spark-master:
+        condition: service_healthy
+
+  streamlit:
+    build: ./docker/airflow
+    container_name: streamlit
+    command: streamlit run /opt/airflow/src/ui/app.py --server.port 8501 --server.address 0.0.0.0
+    ports: ["8501:8501"]
+    volumes:
+      - ./src:/opt/airflow/src
+    depends_on: [api]
+
   postgres:
     image: postgres:13
     container_name: postgres
@@ -187,10 +204,9 @@ services:
       - POSTGRES_USER=${AIRFLOW_DB_USER}
       - POSTGRES_PASSWORD=${AIRFLOW_DB_PASSWORD}
       - POSTGRES_DB=${AIRFLOW_DB_NAME}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
+    volumes: [postgres_data:/var/lib/postgresql/data]
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U airflow" ]
+      test: ["CMD-SHELL", "pg_isready -U airflow"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -199,16 +215,12 @@ services:
     <<: *airflow-common
     container_name: airflow-webserver
     command: webserver
-    ports:
-      - "8083:8080" # Changed to 8083 to avoid conflict with Kafka UI/Spark Config
+    ports: ["8083:8080"]
     healthcheck:
-      test: [ "CMD", "curl", "--fail", "http://localhost:8080/health" ]
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
       interval: 30s
       timeout: 30s
       retries: 5
-    depends_on:
-      postgres:
-        condition: service_healthy
 
   airflow-scheduler:
     <<: *airflow-common

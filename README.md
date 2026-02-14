@@ -141,3 +141,10 @@ Expected result: step 8 returns `n > 0`.
 Notes:
 - Spark workers run with `AWS_REGION/AWS_DEFAULT_REGION=us-east-1` so Iceberg `S3FileIO` can write to MinIO without region errors.
 - Producer runs as `python -m src.ingestion.streaming.binance_producer` to avoid PYTHONPATH hacks.
+
+## Silver data quality
+- The 1m silver job drops rows where `price <= 0`.
+- The 1m silver job drops rows where `qty < 0`.
+- The 1m silver job drops rows with null/empty `symbol`.
+- The 1m silver job drops rows with null event timestamp (`event_time`).
+- Metrics are logged per run as `rows_in`, `rows_valid`, `rows_dropped`, `duration_ms` in spark-submit output.

@@ -1,3 +1,5 @@
+import time
+
 import structlog
 from pyspark.sql import functions as F
 
@@ -10,6 +12,7 @@ logger = structlog.get_logger(__name__)
 
 
 def main() -> None:
+    started_at = time.perf_counter()
     spark = build_spark_session("CryptoLake-BronzeToSilver1m")
     catalog = settings.iceberg_catalog_name
     source = f"{catalog}.bronze.futures_trades"
@@ -36,8 +39,27 @@ def main() -> None:
     )
 
     bronze_df = spark.table(source)
+    rows_in = bronze_df.count()
+
+    valid_filter = (
+        F.col("price").isNotNull()
+        & (F.col("price") > 0)
+        & F.col("qty").isNotNull()
+        & (F.col("qty") >= 0)
+        & F.col("event_time").isNotNull()
+        & F.col("symbol").isNotNull()
+        & (F.length(F.trim(F.col("symbol"))) > 0)
+    )
+    valid_bronze_df = bronze_df.where(valid_filter)
+    rows_valid = valid_bronze_df.count()
+    rows_dropped = rows_in - rows_valid
+
+    if rows_valid == 0:
+        logger.warning("silver_quality_no_valid_rows", rows_in=rows_in, rows_dropped=rows_dropped)
+        return
+
     silver_df = (
-        bronze_df.groupBy(F.window("event_time", "1 minute"), F.col("symbol"))
+        valid_bronze_df.groupBy(F.window("event_time", "1 minute"), F.col("symbol"))
         .agg(
             F.min_by("price", "event_time").alias("open"),
             F.max("price").alias("high"),
@@ -63,7 +85,15 @@ def main() -> None:
 
     spark.conf.set("spark.sql.sources.partitionOverwriteMode", "dynamic")
     silver_df.writeTo(target).overwritePartitions()
-    logger.info("silver_1m_overwrite_done", table=target)
+    duration_ms = int((time.perf_counter() - started_at) * 1000)
+    logger.info(
+        "silver_1m_overwrite_done",
+        table=target,
+        rows_in=rows_in,
+        rows_valid=rows_valid,
+        rows_dropped=rows_dropped,
+        duration_ms=duration_ms,
+    )
 
 
 if __name__ == "__main__":

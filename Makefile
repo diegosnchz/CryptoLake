@@ -68,6 +68,9 @@ reset-kafka:
 	docker-compose rm -sf producer kafka-ui kafka zookeeper || true
 	@for v in $$(docker volume ls -q | grep '_kafka_data$$' || true); do docker volume rm $$v; done
 
+clean-checkpoints:
+	docker-compose run --rm mc /bin/sh -c "mc alias set minio $$MINIO_ENDPOINT $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD && mc rm --recursive --force minio/$$MINIO_BUCKET_BRONZE/checkpoints/bronze/futures_trades || true"
+
 logs:
 	docker-compose logs -f
 

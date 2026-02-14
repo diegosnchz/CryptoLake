@@ -51,6 +51,12 @@ run-gold:
 down:
 	docker-compose down
 
+airflow-up:
+	docker-compose up -d airflow-init airflow-webserver airflow-scheduler
+
+airflow-trigger-silver:
+	docker exec airflow-webserver airflow dags trigger bronze_to_silver_1m
+
 logs:
 	docker-compose logs -f
 

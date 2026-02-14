@@ -148,3 +148,9 @@ Notes:
 - The 1m silver job drops rows with null/empty `symbol`.
 - The 1m silver job drops rows with null event timestamp (`event_time`).
 - Metrics are logged per run as `rows_in`, `rows_valid`, `rows_dropped`, `duration_ms` in spark-submit output.
+
+## Airflow orchestration
+- Bronze streaming runs as a service (`producer` + `stream_to_bronze.py`), not as an Airflow task.
+- Airflow DAG `bronze_to_silver_1m` orchestrates the silver batch pipeline only.
+- Task order: dependency healthcheck -> `bronze_to_silver_1m.py` -> `check_silver_count.py`.
+- Launch with `make airflow-up` and trigger with `make airflow-trigger-silver`.

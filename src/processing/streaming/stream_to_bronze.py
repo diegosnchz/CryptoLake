@@ -1,11 +1,11 @@
 import argparse
 
 import structlog
-from pyspark.sql.functions import col, from_json, to_date
+from pyspark.sql.functions import col, current_timestamp, from_json, lit, to_date, when
 
 from src.config.logging import configure_logging
 from src.config.settings import settings
-from src.processing.schemas.bronze import futures_trade_schema
+from src.contracts.spark_schema import TRADE_EVENT_V1_SPARK_SCHEMA
 from src.processing.spark_session import build_spark_session
 
 configure_logging(settings.log_level)
@@ -49,9 +49,39 @@ def main() -> None:
     )
 
     parsed = raw.select(
-        from_json(col("value").cast("string"), futures_trade_schema).alias("event")
-    ).select("event.*").where(col("event_time").isNotNull())
-    bronze_df = parsed.withColumn("event_date", to_date(col("event_time")))
+        from_json(col("value").cast("string"), TRADE_EVENT_V1_SPARK_SCHEMA).alias("event")
+    ).select("event.*")
+
+    bronze_df = (
+        parsed.where(
+            col("symbol").isNotNull()
+            & col("event_time_ms").isNotNull()
+            & col("price").isNotNull()
+            & col("quantity").isNotNull()
+        )
+        .withColumn("event_time", (col("event_time_ms") / 1000).cast("timestamp"))
+        .withColumn(
+            "side",
+            when(col("is_buyer_maker").isNull(), lit(None).cast("string"))
+            .when(col("is_buyer_maker"), lit("sell"))
+            .otherwise(lit("buy")),
+        )
+        .withColumn("qty", col("quantity"))
+        .withColumn("exchange", lit("binance_futures"))
+        .withColumn("ingest_ts", current_timestamp())
+        .withColumn("event_date", to_date(col("event_time")))
+        .select(
+            "symbol",
+            "event_time",
+            "price",
+            "qty",
+            "side",
+            "trade_id",
+            "exchange",
+            "ingest_ts",
+            "event_date",
+        )
+    )
 
     checkpoint = f"s3a://{settings.minio_bucket_bronze}/checkpoints/bronze/futures_trades"
     writer = bronze_df.writeStream.format("iceberg").outputMode("append").option(

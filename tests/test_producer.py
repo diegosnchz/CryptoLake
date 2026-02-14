@@ -50,7 +50,7 @@ def test_extract_trade_payload_raises_for_missing_fields() -> None:
         extract_trade_payload(message)
         raise AssertionError("Expected ValueError for missing fields")
     except ValueError as exc:
-        assert "Missing Binance aggTrade fields" in str(exc)
+        assert "Missing trade payload fields" in str(exc)
 
 
 def test_publish_retries_on_kafka_buffer_error() -> None:
@@ -79,5 +79,8 @@ def test_publish_serializes_numeric_fields() -> None:
     payload = json.loads(raw)
 
     assert key == "BTCUSDT"
+    assert payload["event_version"] == "v1"
+    assert payload["source"] == "binance"
     assert isinstance(payload["price"], float)
-    assert isinstance(payload["qty"], float)
+    assert isinstance(payload["quantity"], float)
+    assert isinstance(payload["event_time_ms"], int)

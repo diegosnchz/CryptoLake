@@ -1,6 +1,5 @@
 import asyncio
 import json
-from datetime import datetime, timezone
 from typing import Any
 
 import structlog
@@ -9,7 +8,7 @@ from confluent_kafka import Producer
 
 from src.config.logging import configure_logging
 from src.config.settings import settings
-from src.contracts.events import parse_binance_aggtrade
+from src.contracts.events import normalize_binance_payload_to_trade_event_v1
 
 configure_logging(settings.log_level)
 logger = structlog.get_logger(__name__)
@@ -20,10 +19,19 @@ def extract_trade_payload(message: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise ValueError("Websocket payload must be an object")
 
-    required = {"s", "T", "p", "q", "m", "a"}
-    missing = required - set(payload.keys())
+    required = {
+        "symbol": ("symbol", "s"),
+        "event_time_ms": ("event_time_ms", "E", "T"),
+        "price": ("price", "p"),
+        "quantity": ("quantity", "q"),
+    }
+    missing = [
+        field_name
+        for field_name, aliases in required.items()
+        if all(payload.get(alias) is None for alias in aliases)
+    ]
     if missing:
-        raise ValueError(f"Missing Binance aggTrade fields: {sorted(missing)}")
+        raise ValueError(f"Missing trade payload fields: {sorted(missing)}")
 
     return payload
 
@@ -84,19 +92,8 @@ class BinanceFuturesKafkaProducer:
 
     def _publish(self, raw_message: str) -> None:
         payload = extract_trade_payload(json.loads(raw_message))
-        event = parse_binance_aggtrade(payload, ingest_ts=datetime.now(timezone.utc))
-        encoded = json.dumps(
-            {
-                "symbol": event.symbol,
-                "event_time": event.event_time.isoformat(),
-                "price": float(event.price),
-                "qty": float(event.qty),
-                "side": event.side,
-                "trade_id": event.trade_id,
-                "exchange": event.exchange,
-                "ingest_ts": event.ingest_ts.isoformat(),
-            }
-        )
+        event = normalize_binance_payload_to_trade_event_v1(payload)
+        encoded = event.model_dump_json(exclude_none=True)
 
         retries = 0
         while True:

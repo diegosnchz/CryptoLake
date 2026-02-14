@@ -1,21 +1,4 @@
-from pyspark.sql.types import (
-    DoubleType,
-    LongType,
-    StringType,
-    StructField,
-    StructType,
-    TimestampType,
-)
+from src.contracts.spark_schema import TRADE_EVENT_V1_SPARK_SCHEMA
 
-futures_trade_schema = StructType(
-    [
-        StructField("symbol", StringType(), False),
-        StructField("event_time", TimestampType(), False),
-        StructField("price", DoubleType(), False),
-        StructField("qty", DoubleType(), False),
-        StructField("side", StringType(), False),
-        StructField("trade_id", LongType(), False),
-        StructField("exchange", StringType(), False),
-        StructField("ingest_ts", TimestampType(), False),
-    ]
-)
+# Backward-compatible export for modules still importing this symbol.
+futures_trade_schema = TRADE_EVENT_V1_SPARK_SCHEMA

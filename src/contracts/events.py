@@ -1,41 +1,101 @@
-from datetime import datetime, timezone
-from decimal import Decimal
-from typing import Any, Dict
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, field_validator
 
 
-class FuturesTradeEvent(BaseModel):
+class TradeEventV1(BaseModel):
+    model_config = ConfigDict(extra="ignore", allow_inf_nan=False)
+
+    event_version: Literal["v1"] = "v1"
+    source: Literal["binance"] = "binance"
     symbol: str
-    event_time: datetime
-    price: Decimal
-    qty: Decimal
-    side: str = Field(description="buy|sell inferred from buyer maker flag")
-    trade_id: int
-    exchange: str = "binance_futures"
-    ingest_ts: datetime
+    event_time_ms: int
+    trade_time_ms: int | None = None
+    price: float
+    quantity: float
+    trade_id: int | None = None
+    is_buyer_maker: bool | None = None
+    raw: dict[str, Any] | None = None
+
+    @field_validator("symbol")
+    @classmethod
+    def _normalize_symbol(cls, value: str) -> str:
+        symbol = value.strip().upper()
+        if not symbol:
+            raise ValueError("symbol cannot be empty")
+        return symbol
 
 
-def parse_binance_aggtrade(
-    payload: Dict[str, Any], ingest_ts: datetime | None = None
-) -> FuturesTradeEvent:
-    ts = ingest_ts or datetime.now(timezone.utc)
+def _coerce_int(value: Any) -> int | None:
+    if value is None:
+        return None
     try:
-        symbol = str(payload["s"]).upper()
-        event_time = datetime.fromtimestamp(int(payload["T"]) / 1000, tz=timezone.utc)
-        price = Decimal(str(payload["p"]))
-        qty = Decimal(str(payload["q"]))
-        trade_id = int(payload["a"])
-    except (KeyError, TypeError, ValueError) as exc:
-        raise ValueError(f"Invalid Binance aggTrade payload: {payload}") from exc
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
-    side = "sell" if payload.get("m", False) else "buy"
-    return FuturesTradeEvent(
-        symbol=symbol,
-        event_time=event_time,
+
+def _coerce_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _coerce_bool(value: Any) -> bool | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"true", "1", "yes"}:
+            return True
+        if normalized in {"false", "0", "no"}:
+            return False
+    return None
+
+
+def normalize_binance_payload_to_trade_event_v1(payload: dict[str, Any]) -> TradeEventV1:
+    if not isinstance(payload, dict):
+        raise ValueError("Trade payload must be a JSON object")
+
+    candidate = payload.get("data", payload)
+    if not isinstance(candidate, dict):
+        raise ValueError("Trade payload.data must be a JSON object")
+
+    symbol = candidate.get("symbol", candidate.get("s"))
+    event_time_ms = _coerce_int(candidate.get("event_time_ms", candidate.get("E", candidate.get("T"))))
+    trade_time_ms = _coerce_int(candidate.get("trade_time_ms", candidate.get("T")))
+    price = _coerce_float(candidate.get("price", candidate.get("p")))
+    quantity = _coerce_float(candidate.get("quantity", candidate.get("q")))
+    trade_id = _coerce_int(candidate.get("trade_id", candidate.get("a")))
+    is_buyer_maker = _coerce_bool(candidate.get("is_buyer_maker", candidate.get("m")))
+
+    missing: list[str] = []
+    if symbol in (None, ""):
+        missing.append("symbol")
+    if price is None:
+        missing.append("price")
+    if quantity is None:
+        missing.append("quantity")
+    if event_time_ms is None:
+        missing.append("event_time_ms")
+    if missing:
+        raise ValueError(f"Missing required trade event fields: {', '.join(missing)}")
+
+    return TradeEventV1(
+        event_version="v1",
+        source="binance",
+        symbol=str(symbol),
+        event_time_ms=event_time_ms,
+        trade_time_ms=trade_time_ms,
         price=price,
-        qty=qty,
-        side=side,
+        quantity=quantity,
         trade_id=trade_id,
-        ingest_ts=ts,
+        is_buyer_maker=is_buyer_maker,
     )

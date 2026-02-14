@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     iceberg_namespace_bronze: str = Field("bronze", alias="ICEBERG_NAMESPACE_BRONZE")
     iceberg_namespace_silver: str = Field("silver", alias="ICEBERG_NAMESPACE_SILVER")
     iceberg_namespace_gold: str = Field("gold", alias="ICEBERG_NAMESPACE_GOLD")
+    spark_master: str = Field("spark://spark-master:7077", alias="SPARK_MASTER")
 
     api_host: str = Field("0.0.0.0", alias="API_HOST")
     api_port: int = Field(8000, alias="API_PORT")

@@ -11,14 +11,17 @@ logger = structlog.get_logger(__name__)
 def bootstrap() -> None:
     spark = build_spark_session("CryptoLake-IcebergBootstrap")
     catalog = settings.iceberg_catalog_name
+    ns_bronze = settings.iceberg_namespace_bronze
+    ns_silver = settings.iceberg_namespace_silver
+    ns_gold = settings.iceberg_namespace_gold
 
-    spark.sql(f"CREATE NAMESPACE IF NOT EXISTS {catalog}.{settings.iceberg_namespace_bronze}")
-    spark.sql(f"CREATE NAMESPACE IF NOT EXISTS {catalog}.{settings.iceberg_namespace_silver}")
-    spark.sql(f"CREATE NAMESPACE IF NOT EXISTS {catalog}.{settings.iceberg_namespace_gold}")
+    spark.sql(f"CREATE NAMESPACE IF NOT EXISTS {catalog}.{ns_bronze}")
+    spark.sql(f"CREATE NAMESPACE IF NOT EXISTS {catalog}.{ns_silver}")
+    spark.sql(f"CREATE NAMESPACE IF NOT EXISTS {catalog}.{ns_gold}")
 
     spark.sql(
         f"""
-        CREATE TABLE IF NOT EXISTS {catalog}.bronze.futures_trades (
+        CREATE TABLE IF NOT EXISTS {catalog}.{ns_bronze}.futures_trades (
             symbol STRING,
             event_time TIMESTAMP,
             price DOUBLE,
@@ -35,7 +38,7 @@ def bootstrap() -> None:
 
     spark.sql(
         f"""
-        CREATE TABLE IF NOT EXISTS {catalog}.silver.futures_ohlcv_1m (
+        CREATE TABLE IF NOT EXISTS {catalog}.{ns_silver}.futures_ohlcv_1m (
             symbol STRING,
             window_start TIMESTAMP,
             window_end TIMESTAMP,
@@ -53,7 +56,7 @@ def bootstrap() -> None:
 
     spark.sql(
         f"""
-        CREATE TABLE IF NOT EXISTS {catalog}.gold.futures_daily_stats (
+        CREATE TABLE IF NOT EXISTS {catalog}.{ns_gold}.futures_daily_stats (
             symbol STRING,
             trade_date DATE,
             total_volume DOUBLE,

@@ -69,7 +69,9 @@ def normalize_binance_payload_to_trade_event_v1(payload: dict[str, Any]) -> Trad
         raise ValueError("Trade payload.data must be a JSON object")
 
     symbol = candidate.get("symbol", candidate.get("s"))
-    event_time_ms = _coerce_int(candidate.get("event_time_ms", candidate.get("E", candidate.get("T"))))
+    event_time_ms = _coerce_int(
+        candidate.get("event_time_ms", candidate.get("E", candidate.get("T")))
+    )
     trade_time_ms = _coerce_int(candidate.get("trade_time_ms", candidate.get("T")))
     price = _coerce_float(candidate.get("price", candidate.get("p")))
     quantity = _coerce_float(candidate.get("quantity", candidate.get("q")))

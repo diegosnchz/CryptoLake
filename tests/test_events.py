@@ -18,3 +18,13 @@ def test_parse_binance_aggtrade_maps_fields() -> None:
     assert event.side == "buy"
     assert event.trade_id == 12345
     assert event.exchange == "binance_futures"
+
+
+def test_parse_binance_aggtrade_raises_on_invalid_payload() -> None:
+    payload = {"s": "btcusdt", "p": "42000.5"}
+
+    try:
+        parse_binance_aggtrade(payload)
+        raise AssertionError("Expected ValueError for malformed payload")
+    except ValueError as exc:
+        assert "Invalid Binance aggTrade payload" in str(exc)

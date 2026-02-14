@@ -20,13 +20,22 @@ def parse_binance_aggtrade(
     payload: Dict[str, Any], ingest_ts: datetime | None = None
 ) -> FuturesTradeEvent:
     ts = ingest_ts or datetime.now(timezone.utc)
+    try:
+        symbol = str(payload["s"]).upper()
+        event_time = datetime.fromtimestamp(int(payload["T"]) / 1000, tz=timezone.utc)
+        price = Decimal(str(payload["p"]))
+        qty = Decimal(str(payload["q"]))
+        trade_id = int(payload["a"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError(f"Invalid Binance aggTrade payload: {payload}") from exc
+
     side = "sell" if payload.get("m", False) else "buy"
     return FuturesTradeEvent(
-        symbol=str(payload["s"]).upper(),
-        event_time=datetime.fromtimestamp(payload["T"] / 1000, tz=timezone.utc),
-        price=Decimal(str(payload["p"])),
-        qty=Decimal(str(payload["q"])),
+        symbol=symbol,
+        event_time=event_time,
+        price=price,
+        qty=qty,
         side=side,
-        trade_id=int(payload["a"]),
+        trade_id=trade_id,
         ingest_ts=ts,
     )

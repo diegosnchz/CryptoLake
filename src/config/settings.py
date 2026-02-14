@@ -16,6 +16,10 @@ class Settings(BaseSettings):
         "binance_futures_realtime",
         validation_alias=AliasChoices("KAFKA_TOPIC_PRICES_REALTIME", "KAFKA_TOPIC_FUTURES"),
     )
+    producer_reconnect_max_backoff_seconds: int = Field(
+        60,
+        alias="PRODUCER_RECONNECT_MAX_BACKOFF_SECONDS",
+    )
 
     binance_ws_base_url: str = Field("wss://fstream.binance.com/stream", alias="BINANCE_WS_BASE_URL")
     binance_symbols: str = Field("btcusdt,ethusdt,solusdt,bnbusdt", alias="BINANCE_SYMBOLS")

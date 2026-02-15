@@ -47,6 +47,15 @@ Bronze streaming runs as a service.
   - `serve`:
     - `docker-compose up -d streamlit`
 
+## Web UIs (local)
+- Airflow UI: `http://localhost:8083` (user created by `start_cryptolake.bat`: `diego_admin` / `Lakehouse2026`)
+- MinIO Console: `http://localhost:9001` (user created by `start_cryptolake.bat`: `lakeadmin` / `LakeMinio2026`)
+- Kafka UI: `http://localhost:8080`
+- Spark Master UI: `http://localhost:8082`
+- Streamlit: `http://localhost:8502`
+- API: `http://localhost:8000` (`/health`, `/metrics`)
+- Iceberg REST: `http://localhost:8181/v1/config` (note: `/` returns HTTP 400 "No route", this is expected)
+
 ## Validation commands
 - Bronze count: `docker exec spark-master /opt/spark/bin/spark-sql -e "SELECT count(*) AS n FROM cryptolake.bronze.futures_trades;"`
 - Silver count: `docker exec spark-master /opt/spark/bin/spark-sql -e "SELECT count(*) AS n FROM cryptolake.silver.ohlcv_1m;"`
@@ -75,5 +84,6 @@ Bronze streaming runs as a service.
 - If consumer shows `LEADER_NOT_AVAILABLE`, wait 10-20 seconds and retry the command.
 - Dev only: if `available-now` reads 0 rows after Kafka reset, run `make clean-checkpoints` to clear bronze checkpoint and realign offsets.
 - Iceberg S3 region errors: verify `AWS_REGION` and `AWS_DEFAULT_REGION` are `us-east-1`.
+- Iceberg REST returns `{"error":{"message":"No route for request: GET ","code":400}}` on `/`: use `/v1/config` (or Spark SQL) instead.
 - Streamlit port conflict: app is mapped to `localhost:8502`.
 - If bronze writes 0 rows in available-now, verify producer traffic with `make kafka-peek` first.

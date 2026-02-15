@@ -36,6 +36,13 @@ def load_latest_rows(limit: int, symbol: str) -> pd.DataFrame:
     selected = frame[
         ["symbol", "window_start", "window_end", "open", "high", "low", "close", "volume", "trades"]
     ].copy()
+    # Keep chart inputs stable even if Arrow/Pandas infer object/decimal dtypes.
+    selected["window_start"] = pd.to_datetime(selected["window_start"], errors="coerce", utc=True)
+    selected["window_end"] = pd.to_datetime(selected["window_end"], errors="coerce", utc=True)
+    for numeric_col in ("open", "high", "low", "close", "volume", "trades"):
+        selected[numeric_col] = pd.to_numeric(selected[numeric_col], errors="coerce")
+    selected = selected.dropna(subset=["window_start", "close"])
+
     if symbol:
         selected = selected[selected["symbol"] == symbol.upper()]
     selected = selected.sort_values("window_start", ascending=False).head(int(limit))
@@ -53,18 +60,13 @@ if refresh:
 
 df = load_latest_rows(limit=limit, symbol=symbol)
 
-with st.container(horizontal=True):
-    st.metric("Rows loaded", f"{len(df)}", border=True)
-    st.metric("Selected symbol", symbol.upper() if symbol else "ALL", border=True)
-    st.metric(
-        "Most recent candle",
-        str(df["window_start"].max()) if not df.empty else "n/a",
-        border=True,
-    )
+c1, c2, c3 = st.columns(3)
+c1.metric("Rows loaded", f"{len(df)}")
+c2.metric("Selected symbol", symbol.upper() if symbol else "ALL")
+c3.metric("Most recent candle", str(df["window_start"].max()) if not df.empty else "n/a")
 
-with st.container(border=True):
-    st.subheader("Latest silver rows")
-    st.dataframe(df, use_container_width=True, hide_index=True)
+st.subheader("Latest silver rows")
+st.dataframe(df, use_container_width=True, hide_index=True)
 
 if not df.empty:
     chart_df = df.sort_values("window_start")
@@ -74,6 +76,5 @@ if not df.empty:
         .encode(x="window_start:T", y="close:Q", color="symbol:N")
         .properties(height=320)
     )
-    with st.container(border=True):
-        st.subheader("Close price trend")
-        st.altair_chart(line, use_container_width=True)
+    st.subheader("Close price trend")
+    st.altair_chart(line, use_container_width=True)

@@ -1,12 +1,10 @@
-version: '3.8'
-
 x-spark-common: &spark-common
   build: ./docker/spark
   environment:
     - SPARK_MODE=worker
     - SPARK_MASTER_URL=spark://spark-master:7077
-    - SPARK_WORKER_MEMORY=1G
-    - SPARK_WORKER_CORES=1
+    - SPARK_WORKER_MEMORY=2G
+    - SPARK_WORKER_CORES=2
     - SPARK_RPC_AUTHENTICATION_ENABLED=no
     - SPARK_RPC_ENCRYPTION_ENABLED=no
     - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
@@ -46,6 +44,7 @@ x-airflow-common: &airflow-common
     - ./src/orchestration/dags:/opt/airflow/dags
     - ./src:/opt/airflow/src
     - ./scripts:/opt/airflow/scripts
+    - /var/run/docker.sock:/var/run/docker.sock
   depends_on:
     - postgres
 
@@ -193,10 +192,12 @@ services:
     container_name: api
     user: "${AIRFLOW_UID:-50000}:0"
     entrypoint: /bin/bash
-    command: -lc "uvicorn src.api.main:app --host 0.0.0.0 --port 8000"
+    command: -lc "python -m pip install --user --no-deps 'email-validator>=2,<3' && uvicorn src.api.main:app --host 0.0.0.0 --port 8000"
     ports: ["8000:8000"]
     environment:
       - PYTHONPATH=/opt/airflow
+      # API is for lightweight inspection; keep it local so it doesn't reserve Spark cluster cores.
+      - SPARK_MASTER=local[1]
       - AWS_REGION=us-east-1
       - AWS_DEFAULT_REGION=us-east-1
       - MINIO_ENDPOINT=${MINIO_ENDPOINT}
@@ -217,6 +218,8 @@ services:
     ports: ["8502:8501"]
     environment:
       - PYTHONPATH=/opt/airflow
+      # Streamlit is for inspection; keep it local so it doesn't reserve Spark cluster cores.
+      - SPARK_MASTER=local[1]
       - AWS_REGION=us-east-1
       - AWS_DEFAULT_REGION=us-east-1
     volumes:

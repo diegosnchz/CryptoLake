@@ -6,7 +6,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    # Don't hard-wire env_file here: unit tests should be able to control env values
+    # without being overridden by a local `.env` checked into the repo.
+    model_config = SettingsConfigDict(env_file_encoding="utf-8", extra="ignore")
 
     app_env: str = Field("dev", alias="APP_ENV")
     log_level: str = Field("INFO", alias="LOG_LEVEL")
@@ -53,7 +55,8 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    # Default runtime behavior: load from `.env` if present.
+    return Settings(_env_file=".env", _env_file_encoding="utf-8")
 
 
 settings = get_settings()

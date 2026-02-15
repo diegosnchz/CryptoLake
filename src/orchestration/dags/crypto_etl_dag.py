@@ -73,9 +73,10 @@ with DAG(
     start_bronze_stream = BashOperator(
         task_id="start_bronze_stream",
         bash_command=(
-            "spark-submit --master "
-            + SPARK_MASTER
-            + " /opt/airflow/src/processing/streaming/stream_to_bronze.py"
+            "docker exec -e PYTHONPATH=/opt/spark/work-dir "
+            "spark-master "
+            "/opt/spark/bin/spark-submit "
+            "/opt/spark/work-dir/src/processing/streaming/stream_to_bronze.py"
         ),
     )
 
@@ -97,15 +98,21 @@ with DAG(
     )
     run_silver = BashOperator(
         task_id="run_bronze_to_silver",
-        bash_command="spark-submit --master "
-        + SPARK_MASTER
-        + " /opt/airflow/src/processing/batch/bronze_to_silver_1m.py",
+        bash_command=(
+            "docker exec -e PYTHONPATH=/opt/spark/work-dir "
+            "spark-master "
+            "/opt/spark/bin/spark-submit "
+            "/opt/spark/work-dir/src/processing/batch/bronze_to_silver_1m.py"
+        ),
     )
     check_silver_count = BashOperator(
         task_id="check_silver_count",
-        bash_command="spark-submit --master "
-        + SPARK_MASTER
-        + " /opt/airflow/src/processing/batch/check_silver_count.py",
+        bash_command=(
+            "docker exec -e PYTHONPATH=/opt/spark/work-dir "
+            "spark-master "
+            "/opt/spark/bin/spark-submit "
+            "/opt/spark/work-dir/src/processing/batch/check_silver_count.py"
+        ),
     )
     wait_for_dependencies >> run_silver >> check_silver_count
 
@@ -119,7 +126,10 @@ with DAG(
 ) as dag_gold:
     run_gold = BashOperator(
         task_id="run_silver_to_gold_daily",
-        bash_command="spark-submit --master "
-        + SPARK_MASTER
-        + " /opt/airflow/src/processing/gold/silver_to_gold_daily.py",
+        bash_command=(
+            "docker exec -e PYTHONPATH=/opt/spark/work-dir "
+            "spark-master "
+            "/opt/spark/bin/spark-submit "
+            "/opt/spark/work-dir/src/processing/gold/silver_to_gold_daily.py"
+        ),
     )

@@ -1,95 +1,146 @@
 import asyncio
 import json
-import logging
-import os
-import sys
+from typing import Any
+
 import structlog
 import websockets
 from confluent_kafka import Producer
 
-# Add src to path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../')))
+from src.config.logging import configure_logging
 from src.config.settings import settings
+from src.contracts.events import normalize_binance_payload_to_trade_event_v1
 
-# Configure Structlog
-structlog.configure(
-    processors=[
-        structlog.processors.TimeStamper(fmt="iso"),
-        structlog.processors.JSONRenderer()
-    ],
-    context_class=dict,
-    logger_factory=structlog.PrintLoggerFactory(),
-)
+configure_logging(settings.log_level)
+logger = structlog.get_logger(__name__)
 
-logger = structlog.get_logger()
 
-# Kafka Producer Configuration
-conf = {
-    'bootstrap.servers': settings.KAFKA_BOOTSTRAP_SERVERS,
-    'client.id': 'binance-producer-v2',
-    'acks': 'all'
-}
-producer = Producer(conf)
+def extract_trade_payload(message: dict[str, Any]) -> dict[str, Any]:
+    payload = message.get("data", message)
+    if not isinstance(payload, dict):
+        raise ValueError("Websocket payload must be an object")
 
-def delivery_report(err, msg):
-    """ Called once for each message produced to indicate delivery result. """
-    if err is not None:
-        logger.error("message_delivery_failed", error=str(err))
-    else:
-        # logger.debug("message_delivered", topic=msg.topic(), partition=msg.partition())
-        pass
-
-async def binance_ws_listener():
-    # WebSocket URL for multiple streams
-    # Format: wss://fstream.binance.com/stream?streams=<stream1>/<stream2>/...
-    # We want aggTrade for btcusdt, ethusdt, solusdt, bnbusdt
-    streams = [
-        "btcusdt@aggTrade",
-        "ethusdt@aggTrade",
-        "solusdt@aggTrade",
-        "bnbusdt@aggTrade"
+    required = {
+        "symbol": ("symbol", "s"),
+        "event_time_ms": ("event_time_ms", "E", "T"),
+        "price": ("price", "p"),
+        "quantity": ("quantity", "q"),
+    }
+    missing = [
+        field_name
+        for field_name, aliases in required.items()
+        if all(payload.get(alias) is None for alias in aliases)
     ]
-    stream_string = "/".join(streams)
-    ws_url = f"wss://fstream.binance.com/stream?streams={stream_string}"
-    
-    logger.info("connecting_to_websocket", url=ws_url)
+    if missing:
+        raise ValueError(f"Missing trade payload fields: {sorted(missing)}")
 
-    async with websockets.connect(ws_url) as websocket:
-        logger.info("websocket_connected", url=ws_url)
-        
+    return payload
+
+
+class BinanceFuturesKafkaProducer:
+    def __init__(self, kafka_producer: Producer | None = None) -> None:
+        self.topic = settings.kafka_topic_prices_realtime
+        self.max_backoff_seconds = max(
+            1,
+            getattr(settings, "producer_reconnect_max_backoff_seconds", 60),
+        )
+        self.producer = kafka_producer or Producer(
+            {
+                "bootstrap.servers": settings.kafka_bootstrap_servers,
+                "client.id": "binance-futures-producer",
+                "acks": "all",
+                "enable.idempotence": True,
+            }
+        )
+
+    async def run_forever(self) -> None:
+        streams = "/".join([f"{symbol}@aggTrade" for symbol in settings.symbols])
+        ws_url = f"{settings.binance_ws_base_url}?streams={streams}"
+        reconnect_delay = 1
+
         while True:
             try:
-                message = await websocket.recv()
-                data = json.loads(message)
-                
-                # The combined stream format returns: {"stream": "<streamName>", "data": <payload>}
-                # We want to extract the payload and maybe enrich it with the stream name if needed,
-                # but aggTrade payload 's' usually contains the symbol.
-                
-                if 'data' in data:
-                    payload = data['data']
-                    symbol = payload.get('s', 'unknown')
-                    
-                    # Send to Kafka
-                    producer.produce(
-                        settings.KAFKA_TOPIC_PRICES_REALTIME, 
-                        key=str(symbol), 
-                        value=json.dumps(payload), 
-                        callback=delivery_report
-                    )
-                    producer.poll(0)
-                
-            except websockets.exceptions.ConnectionClosed as e:
-                logger.error("connection_closed", error=str(e))
-                break
-            except Exception as e:
-                logger.error("processing_error", error=str(e))
-                await asyncio.sleep(1)
+                await self._consume(ws_url)
+                reconnect_delay = 1
+            except asyncio.CancelledError:
+                logger.info("producer_cancelled")
+                raise
+            except Exception as exc:  # noqa: BLE001
+                delay = min(reconnect_delay, self.max_backoff_seconds)
+                logger.warning(
+                    "producer_retrying_after_error",
+                    error=str(exc),
+                    retry_in_seconds=delay,
+                )
+                await asyncio.sleep(delay)
+                reconnect_delay = min(reconnect_delay * 2, self.max_backoff_seconds)
 
-if __name__ == "__main__":
+    async def _consume(self, ws_url: str) -> None:
+        logger.info("connecting_websocket", ws_url=ws_url, topic=self.topic)
+        async with websockets.connect(
+            ws_url,
+            ping_interval=20,
+            ping_timeout=20,
+            close_timeout=10,
+            max_queue=1000,
+        ) as websocket:
+            logger.info("websocket_connected", ws_url=ws_url)
+            async for raw_message in websocket:
+                try:
+                    self._publish(raw_message)
+                except ValueError as exc:
+                    logger.warning("invalid_ws_message_skipped", error=str(exc))
+
+    def _publish(self, raw_message: str) -> None:
+        payload = extract_trade_payload(json.loads(raw_message))
+        event = normalize_binance_payload_to_trade_event_v1(payload)
+        encoded = event.model_dump_json(exclude_none=True)
+
+        retries = 0
+        while True:
+            try:
+                self.producer.produce(
+                    self.topic,
+                    key=event.symbol,
+                    value=encoded,
+                    callback=self._delivery_report,
+                )
+                self.producer.poll(0)
+                return
+            except BufferError:
+                retries += 1
+                if retries > 3:
+                    logger.error(
+                        "kafka_buffer_exhausted",
+                        symbol=event.symbol,
+                        trade_id=event.trade_id,
+                    )
+                    return
+                logger.warning("kafka_buffer_full_retry", retries=retries)
+                self.producer.poll(1)
+
+    @staticmethod
+    def _delivery_report(err, msg) -> None:  # noqa: ANN001
+        if err is not None:
+            logger.error("kafka_delivery_failed", error=str(err))
+            return
+        logger.debug(
+            "kafka_delivery_ok",
+            topic=msg.topic(),
+            partition=msg.partition(),
+            offset=msg.offset(),
+        )
+
+    def flush(self) -> None:
+        self.producer.flush(10)
+
+
+async def _main() -> None:
+    producer = BinanceFuturesKafkaProducer()
     try:
-        asyncio.run(binance_ws_listener())
-    except KeyboardInterrupt:
-        logger.info("stopping_producer")
+        await producer.run_forever()
     finally:
         producer.flush()
+
+
+if __name__ == "__main__":
+    asyncio.run(_main())

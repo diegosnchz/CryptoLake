@@ -1,0 +1,11 @@
+{
+  "event_version": "v1",
+  "source": "binance",
+  "symbol": "BTCUSDT",
+  "event_time_ms": 1700000000100,
+  "trade_time_ms": 1700000000000,
+  "price": 42000.5,
+  "quantity": 0.123,
+  "trade_id": 12345,
+  "is_buyer_maker": false
+}

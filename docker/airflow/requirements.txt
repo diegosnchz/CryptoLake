@@ -6,11 +6,12 @@ websockets
 pandas
 s3fs
 minio
-pyarrow
+pyarrow>=15.0.0
 pydantic-settings
 fastapi
+uvicorn
 streamlit
+altair
 pyiceberg[s3fs]
-# dbt-core
-# dbt-spark
 structlog
+requests

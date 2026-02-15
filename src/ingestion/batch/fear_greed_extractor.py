@@ -1,9 +1,10 @@
-import requests
 import json
-import boto3
-import os
 import logging
+import os
 from datetime import datetime
+
+import boto3
+import requests
 
 # Configuration
 MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "http://localhost:9000")
@@ -13,6 +14,7 @@ BUCKET_NAME = "bronze"
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
 
 def fetch_fear_greed_data():
     url = "https://api.alternative.me/fng/?limit=1"
@@ -24,21 +26,21 @@ def fetch_fear_greed_data():
         logger.error(f"Error fetching Fear & Greed Index: {e}")
         return None
 
+
 def save_to_minio(data, filename):
-    s3 = boto3.client('s3',
-                      endpoint_url=MINIO_ENDPOINT,
-                      aws_access_key_id=MINIO_ACCESS_KEY,
-                      aws_secret_access_key=MINIO_SECRET_KEY)
-    
+    s3 = boto3.client(
+        "s3",
+        endpoint_url=MINIO_ENDPOINT,
+        aws_access_key_id=MINIO_ACCESS_KEY,
+        aws_secret_access_key=MINIO_SECRET_KEY,
+    )
+
     try:
-        s3.put_object(
-            Bucket=BUCKET_NAME,
-            Key=f"fear_greed/{filename}",
-            Body=json.dumps(data)
-        )
+        s3.put_object(Bucket=BUCKET_NAME, Key=f"fear_greed/{filename}", Body=json.dumps(data))
         logger.info(f"Successfully saved {filename} to MinIO bucket {BUCKET_NAME}")
     except Exception as e:
         logger.error(f"Error saving to MinIO: {e}")
+
 
 if __name__ == "__main__":
     data = fetch_fear_greed_data()

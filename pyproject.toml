@@ -10,6 +10,7 @@ dependencies = [
     "websockets",
     "pydantic-settings",
     "fastapi",
+    "uvicorn",
     "streamlit",
     "pyiceberg[s3fs]",
     "dbt-core",
@@ -26,4 +27,14 @@ build-backend = "setuptools.build_meta"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src"]
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B"]
+
+[tool.black]
+line-length = 100

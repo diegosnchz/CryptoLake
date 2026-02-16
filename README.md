@@ -92,6 +92,13 @@ Bronze streaming runs as a service.
 - Gold fact sample (dbt): `docker exec spark-master /opt/spark/bin/spark-sql -e "SELECT symbol, window_start, close, volume FROM cryptolake.gold.fact_ohlcv_1m ORDER BY window_start DESC LIMIT 10;"`
 - Airflow full DAG status: `make airflow-status-full`
 
+## Documentos de evaluacion profesor
+- Requisitos extraidos y estado: `docs/profesor-requisitos.md`
+- Gap y cierre aplicado: `docs/profesor-gap.md`
+- Validacion local paso a paso: `docs/validacion-local.md`
+- Resumen de entrega: `docs/profesor-resumen-entrega.md`
+- Decisiones de adaptacion: `docs/adr/ADR-0001-profesor-adaptacion.md`
+
 ## Developer commands
 - `make kafka-peek`
 - `make bronze-available-now`

@@ -46,10 +46,11 @@ logs/
 *.swo
 
 # Project specific
-airlfow/
+airflow/
 logs/
 plugins/
 config/
 src/transformation/dbt_cryptolake/target/
 src/transformation/dbt_cryptolake/logs/
 src/transformation/dbt_cryptolake/dbt_packages/
+src/transformation/dbt_cryptolake/.user.yml

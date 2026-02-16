@@ -1,28 +1,26 @@
-﻿# Gap analysis: requisitos del profesor vs estado actual del alumno
+﻿# Gap analysis: requisitos del profesor vs estado del repo
 
 ## Criterio
-- Fuente de requisitos: `_prof_repo/*.md`.
-- Estado actual evaluado sobre: `docker-compose.yml`, `Makefile`, `README.md`, `src/processing/*`, `src/orchestration/dags/*`, `src/transformation/dbt_cryptolake/*`.
-- Objetivo de este gap: implementar solo lo faltante, minimo y compatible con el pipeline actual.
+- Fuente de requisitos: `profesor_ref/*.md`.
+- Estado actual: post-implementacion (2026-02-16).
+- Objetivo: cerrar lo faltante de fases 5-6 sin romper el flujo ya existente.
 
-## Tabla de gap y plan de accion
+## Matriz de cierre
 
-| Requisito (profe) | Estado actual (alumno) | Accion concreta (archivo a tocar) | Criterio de aceptacion (comando de prueba) |
-|---|---|---|---|
-| Spark Thrift Server expuesto en `10000` para dbt | Falta servicio `spark-thrift` en `docker-compose.yml` | Actualizar `docker-compose.yml` para agregar `spark-thrift` y etiquetar imagen Spark reutilizable | `docker compose up -d spark-master spark-thrift` y `docker logs spark-thrift | tail -n 20` debe mostrar arranque Thrift |
-| Verificacion de puerto Thrift y conexion SQL | No hay comando de verificacion dedicado | Agregar target Make (`spark-thrift-check`) y seccion README de comprobacion | `make spark-thrift-check` (o equivalente) y `docker exec spark-master /opt/spark/bin/spark-sql -e "SHOW NAMESPACES IN cryptolake;"` |
-| Proyecto dbt completo con `profiles.yml` + `sources.yml` | Existe `dbt_project.yml` minimo y 2 modelos sueltos; no `profiles.yml` ni `sources.yml` | Crear/actualizar `src/transformation/dbt_cryptolake/dbt_project.yml`, `profiles.yml`, `models/sources.yml` | `cd src/transformation/dbt_cryptolake && dbt debug --profiles-dir .` exitoso |
-| Modelos dbt staging/marts adaptados a tablas Silver reales | Falta estructura staging/marts y el modelo actual referencia tablas inconsistentes (`futures_ohlcv_1m` vs `ohlcv_1m`) | Crear `models/staging/*` y `models/marts/*` adaptados a `cryptolake.silver.ohlcv_1m` (y otras tablas reales) | `dbt run --profiles-dir .` crea tablas Gold sin errores |
-| Macros dbt para schema naming y LOCATION Iceberg | Falta `macros/generate_schema_name.sql` y `macros/create_table_as.sql` | Crear macros en `src/transformation/dbt_cryptolake/macros/` con version conservadora para catalogo actual | `dbt run --profiles-dir . --target prod` crea objetos en schema esperado (`gold`) |
-| Tests dbt minimos (`not_null`, `unique`, positivos`) | Falta `schema.yml` y tests custom | Crear `models/marts/schema.yml` y `tests/assert_positive_*.sql` | `dbt test --profiles-dir .` pasa, o reporta fallos de datos reales (sin fallos de configuracion) |
-| Make targets para dbt (`install/debug/run/test`) | No existen targets dbt | Extender `Makefile` con `dbt-install`, `dbt-debug`, `dbt-run`, `dbt-test` manteniendo targets actuales | `make dbt-debug`, `make dbt-run`, `make dbt-test` |
-| Airflow DAG maestro de pipeline completo | Hay DAGs separados (`ingest_realtime_to_bronze`, `bronze_to_silver_1m`, `silver_to_gold_daily`) pero no full pipeline con dbt | Crear nuevo DAG `src/orchestration/dags/dag_full_pipeline.py` o ampliar el actual para orquestar silver + dbt run/test | `docker exec airflow-webserver airflow dags list | findstr cryptolake_full_pipeline` |
-| Trigger/estado del DAG full pipeline desde Make | Solo existe `airflow-trigger-silver` | Agregar `airflow-trigger-full` y `airflow-status-full` en `Makefile` (sin quitar targets viejos) | `make airflow-trigger-full` y `make airflow-status-full` |
-| README con dos rutas (actual y profesor) | README solo describe ruta actual | Actualizar `README.md` con seccion "Ruta profesor (dbt + airflow full pipeline)" y comandos reproducibles | Validacion manual siguiendo pasos del README sin comandos faltantes |
-| Documentacion de decisiones ambiguas | No existe `docs/adr/` | Crear `docs/adr/ADR-0001-profesor-adaptacion.md` para decisiones conservadoras (nombres de tablas, coexistencia Gold PySpark/dbt, alcance batch opcional) | Archivo ADR presente y referenciado en README/docs resumen |
-| Validacion local integral | No existe documento especifico de validacion de fases profesor | Crear `docs/validacion-local.md` con arranque, checks de servicios, evidencia Bronze/Silver/Gold y dbt debug/run/test | Ejecutar secuencia de comandos del documento en local Docker Compose |
+| Requisito (profe) | Estado inicial | Accion aplicada | Estado final | Evidencia / prueba |
+|---|---|---|---|---|
+| Spark Thrift en `10000` y reutilizacion imagen Spark | Falta | Se agrego `spark-thrift` y `image: cryptolake-spark` compartida, limitando Thrift a 1 core para no bloquear batch | Cerrado | `docker compose ps` muestra `spark-thrift` con `0.0.0.0:10000->10000` |
+| Verificacion de conectividad Thrift | Falta | Se agrego `spark-thrift-check` en `Makefile` + comando equivalente en README | Cerrado | `docker exec airflow-webserver python -c "import socket; ..."` -> `spark-thrift:10000 reachable` |
+| Proyecto dbt completo (`dbt_project.yml`, `profiles.yml`, `sources.yml`, staging/marts) | Parcial | Se estructuro `src/transformation/dbt_cryptolake/` con profile `cryptolake`, source silver y modelos staging/marts | Cerrado | `dbt debug/run/test` exitosos sobre `spark-thrift` |
+| Macros dbt para schemas/LOCATION Iceberg | Falta | Se agregaron `macros/generate_schema_name.sql` y `macros/create_table_as.sql` | Cerrado | `dbt run --target prod` crea staging/gold en namespaces esperados |
+| Tests dbt minimos (`not_null`, `unique`, positivos`) | Falta | Se agrego `models/marts/schema.yml` y tests SQL custom en `tests/` | Cerrado | `dbt test --target prod` -> `PASS=16 ERROR=0` |
+| Make targets dbt (`dbt-install/debug/run/test`) | Falta | Se agregaron targets y `dbt-all` | Cerrado | Targets presentes en `Makefile` y comandos equivalentes documentados |
+| DAG maestro full pipeline | Falta | Se agrego `src/orchestration/dags/dag_full_pipeline.py` | Cerrado | `airflow dags list` incluye `cryptolake_full_pipeline` |
+| Trigger/estado DAG full desde Make | Parcial | Se agregaron `airflow-trigger-full` y `airflow-status-full` | Cerrado | `airflow dags trigger cryptolake_full_pipeline` + `list-runs` |
+| README con camino actual + camino profesor | Falta | README actualizado con dos rutas reproducibles y fallback PowerShell | Cerrado | Secciones `Camino actual` y `Ruta profesor (dbt + Airflow full pipeline)` |
+| Documentacion de decisiones ambiguas (ADR) | Falta | Se creo `docs/adr/ADR-0001-profesor-adaptacion.md` | Cerrado | ADR presente y alineado con decisiones aplicadas |
+| Validacion local integral | Falta | Se crea `docs/validacion-local.md` con arranque, checks y evidencia | Cerrado | Documento de validacion ejecutable en local |
 
-## Riesgos identificados antes de implementar
-- El proyecto actual mezcla nombres `ohlcv_1m` y `futures_ohlcv_1m`; hay que normalizar referencias para no romper API/Streamlit/jobs.
-- `dbt` puede requerir dependencias extras en imagen Airflow o ejecucion local con entorno Python; se resolvera con targets Make y documentacion clara.
-- El DAG actual usa `docker exec` desde Airflow; se mantiene este patron para compatibilidad en local.
+## Gaps que quedan (aceptados)
+- Requisitos de fases 3-4 centrados en dominio batch del profesor (`historical_prices`, `fear_greed`, `MERGE INTO` sobre `daily_prices`) quedan en estado `Parcial` porque este repo prioriza streaming de futuros (`futures_trades` -> `ohlcv_1m`) y no se reemplazo esa arquitectura.
+- Esta diferencia es intencional y documentada en `docs/adr/ADR-0001-profesor-adaptacion.md`.

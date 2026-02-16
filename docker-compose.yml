@@ -176,6 +176,9 @@ services:
     command: >
       /opt/spark/sbin/start-thriftserver.sh
       --master spark://spark-master:7077
+      --conf spark.cores.max=1
+      --conf spark.executor.cores=1
+      --conf spark.executor.instances=1
       --conf spark.sql.defaultCatalog=cryptolake
       --conf spark.sql.catalog.cryptolake.s3.endpoint=${MINIO_ENDPOINT}
       --conf spark.sql.catalog.cryptolake.s3.access-key-id=${MINIO_ACCESS_KEY}

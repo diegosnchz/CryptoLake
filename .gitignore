@@ -50,3 +50,6 @@ airlfow/
 logs/
 plugins/
 config/
+src/transformation/dbt_cryptolake/target/
+src/transformation/dbt_cryptolake/logs/
+src/transformation/dbt_cryptolake/dbt_packages/

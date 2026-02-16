@@ -1,0 +1,21 @@
+cryptolake:
+  target: dev
+  outputs:
+    dev:
+      type: spark
+      method: thrift
+      host: localhost
+      port: 10000
+      user: dbt
+      schema: gold
+      threads: 1
+      connect_timeout: 30
+    prod:
+      type: spark
+      method: thrift
+      host: spark-thrift
+      port: 10000
+      user: dbt
+      schema: gold
+      threads: 2
+      connect_timeout: 30

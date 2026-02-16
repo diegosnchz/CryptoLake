@@ -1,5 +1,5 @@
 x-spark-common: &spark-common
-  build: ./docker/spark
+  image: cryptolake-spark
   environment:
     - SPARK_MODE=worker
     - SPARK_MASTER_URL=spark://spark-master:7077
@@ -139,6 +139,7 @@ services:
 
   spark-master:
     build: ./docker/spark
+    image: cryptolake-spark
     container_name: spark-master
     command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master --ip spark-master --port 7077 --webui-port 8080
     environment:
@@ -165,6 +166,40 @@ services:
   spark-worker:
     <<: *spark-common
     command: /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
+    depends_on:
+      spark-master:
+        condition: service_healthy
+
+  spark-thrift:
+    <<: *spark-common
+    container_name: spark-thrift
+    command: >
+      /opt/spark/sbin/start-thriftserver.sh
+      --master spark://spark-master:7077
+      --conf spark.sql.defaultCatalog=cryptolake
+      --conf spark.sql.catalog.cryptolake.s3.endpoint=${MINIO_ENDPOINT}
+      --conf spark.sql.catalog.cryptolake.s3.access-key-id=${MINIO_ACCESS_KEY}
+      --conf spark.sql.catalog.cryptolake.s3.secret-access-key=${MINIO_SECRET_KEY}
+      --conf spark.hadoop.fs.s3a.endpoint=${MINIO_ENDPOINT}
+      --conf spark.hadoop.fs.s3a.access.key=${MINIO_ACCESS_KEY}
+      --conf spark.hadoop.fs.s3a.secret.key=${MINIO_SECRET_KEY}
+      --hiveconf hive.server2.thrift.port=10000
+      --hiveconf hive.server2.thrift.bind.host=0.0.0.0
+    environment:
+      - SPARK_NO_DAEMONIZE=true
+      - AWS_REGION=us-east-1
+      - AWS_DEFAULT_REGION=us-east-1
+      - KAFKA_BOOTSTRAP_SERVERS=${KAFKA_BOOTSTRAP_SERVERS}
+      - KAFKA_TOPIC_PRICES_REALTIME=${KAFKA_TOPIC_PRICES_REALTIME:-${KAFKA_TOPIC_FUTURES:-binance_futures_realtime}}
+      - KAFKA_TOPIC_FUTURES=${KAFKA_TOPIC_FUTURES:-${KAFKA_TOPIC_PRICES_REALTIME:-binance_futures_realtime}}
+      - MINIO_ENDPOINT=${MINIO_ENDPOINT}
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY}
+      - MINIO_BUCKET_BRONZE=${MINIO_BUCKET_BRONZE}
+      - MINIO_BUCKET_SILVER=${MINIO_BUCKET_SILVER}
+      - MINIO_BUCKET_GOLD=${MINIO_BUCKET_GOLD}
+    ports:
+      - "10000:10000"
     depends_on:
       spark-master:
         condition: service_healthy

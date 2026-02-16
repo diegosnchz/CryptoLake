@@ -4,6 +4,7 @@ BLUE   := $(shell tput -Txterm setaf 4)
 RESET  := $(shell tput -Txterm sgr0)
 TOPIC ?= $(or $(KAFKA_TOPIC_PRICES_REALTIME),$(KAFKA_TOPIC_FUTURES),binance_futures_realtime)
 SPARK_EXEC ?= docker exec -e PYTHONPATH=/opt/spark/work-dir spark-master
+DBT_DOCKER_PATH ?= /opt/airflow/src/transformation/dbt_cryptolake
 
 setup:
 	@echo "${BLUE}Creating directory structure...${RESET}"
@@ -56,6 +57,33 @@ airflow-up:
 
 airflow-trigger-silver:
 	docker exec airflow-webserver airflow dags trigger bronze_to_silver_1m
+
+airflow-trigger-full:
+	docker exec airflow-webserver airflow dags trigger cryptolake_full_pipeline
+
+airflow-status-full:
+	docker exec airflow-webserver airflow dags list-runs -d cryptolake_full_pipeline -o table
+
+spark-thrift-up:
+	docker-compose up -d spark-thrift
+
+spark-thrift-check:
+	docker exec airflow-webserver python -c "import socket; socket.create_connection(('spark-thrift', 10000), timeout=5).close(); print('spark-thrift:10000 reachable')"
+	$(SPARK_EXEC) /opt/spark/bin/spark-sql -e "SHOW NAMESPACES IN cryptolake;"
+
+dbt-install:
+	pip install "dbt-spark[PyHive]==1.8.0"
+
+dbt-debug:
+	docker exec airflow-webserver bash -lc "cd $(DBT_DOCKER_PATH) && dbt debug --profiles-dir . --target prod"
+
+dbt-run:
+	docker exec airflow-webserver bash -lc "cd $(DBT_DOCKER_PATH) && dbt run --profiles-dir . --target prod"
+
+dbt-test:
+	docker exec airflow-webserver bash -lc "cd $(DBT_DOCKER_PATH) && dbt test --profiles-dir . --target prod"
+
+dbt-all: dbt-run dbt-test
 
 serve:
 	docker-compose up -d streamlit

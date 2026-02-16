@@ -1,8 +1,31 @@
-name: dbt_cryptolake
-version: 1.0.0
+name: cryptolake
+version: "1.0.0"
 config-version: 2
-profile: dbt_cryptolake
+
+profile: cryptolake
+
 model-paths: ["models"]
+test-paths: ["tests"]
+macro-paths: ["macros"]
+seed-paths: ["seeds"]
+analysis-paths: ["analyses"]
+
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
 models:
-  dbt_cryptolake:
-    +materialized: table
+  cryptolake:
+    +persist_docs:
+      relation: true
+      columns: true
+    staging:
+      +materialized: table
+      +schema: staging
+    marts:
+      +materialized: table
+      +schema: gold
+
+on-run-start:
+  - "CREATE NAMESPACE IF NOT EXISTS cryptolake.staging"
+  - "CREATE NAMESPACE IF NOT EXISTS cryptolake.gold"

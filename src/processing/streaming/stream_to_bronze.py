@@ -90,15 +90,22 @@ def main() -> None:
     )
 
     checkpoint = f"s3a://{settings.minio_bucket_bronze}/checkpoints/bronze/futures_trades"
-    writer = bronze_df.writeStream.format("iceberg").outputMode("append").option(
-        "checkpointLocation", checkpoint
-    )
+    writer = bronze_df.writeStream.outputMode("append").option("checkpointLocation", checkpoint)
     if args.mode == "available-now":
         writer = writer.trigger(availableNow=True)
     else:
         writer = writer.trigger(processingTime=f"{args.trigger_seconds} seconds")
 
-    query = writer.toTable(table)
+    def _append_batch(batch_df, batch_id: int) -> None:
+        # Stream sink compatibility issue in this branch: append with foreachBatch.
+        if batch_df.isEmpty():
+            logger.info("bronze_batch_empty", run_id=run_id, batch_id=batch_id)
+            return
+        rows = batch_df.count()
+        batch_df.writeTo(table).append()
+        logger.info("bronze_batch_appended", run_id=run_id, batch_id=batch_id, rows=rows, table=table)
+
+    query = writer.foreachBatch(_append_batch).start()
     logger.info(
         "bronze_stream_started",
         run_id=run_id,

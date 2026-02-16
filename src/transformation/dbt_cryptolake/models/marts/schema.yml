@@ -1,0 +1,49 @@
+version: 2
+
+models:
+  - name: dim_symbols
+    description: "Dimension table with one row per traded symbol"
+    columns:
+      - name: symbol
+        tests:
+          - not_null
+          - unique
+
+  - name: dim_dates
+    description: "Date dimension derived from silver ohlcv records"
+    columns:
+      - name: date_day
+        tests:
+          - not_null
+          - unique
+
+  - name: fact_ohlcv_1m
+    description: "Fact table with one-minute OHLCV metrics for each symbol"
+    columns:
+      - name: symbol
+        tests:
+          - not_null
+      - name: window_start
+        tests:
+          - not_null
+      - name: window_end
+        tests:
+          - not_null
+      - name: trade_date
+        tests:
+          - not_null
+      - name: open
+        tests:
+          - not_null
+      - name: high
+        tests:
+          - not_null
+      - name: low
+        tests:
+          - not_null
+      - name: close
+        tests:
+          - not_null
+      - name: volume
+        tests:
+          - not_null

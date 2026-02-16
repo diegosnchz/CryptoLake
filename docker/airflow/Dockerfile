@@ -2,7 +2,7 @@ FROM apache/airflow:2.7.1-python3.11
 
 USER root
 RUN apt-get update && \
-    apt-get install -y gcc python3-dev openjdk-17-jdk-headless curl ca-certificates && \
+    apt-get install -y gcc python3-dev openjdk-17-jdk-headless curl ca-certificates git && \
     apt-get clean
 
 # Airflow tasks use `docker exec` into `spark-master` for reproducible Spark runs.

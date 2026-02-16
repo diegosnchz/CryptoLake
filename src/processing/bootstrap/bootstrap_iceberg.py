@@ -11,10 +11,12 @@ logger = structlog.get_logger(__name__)
 def bootstrap() -> None:
     spark = build_spark_session("CryptoLake-IcebergBootstrap")
     catalog = settings.iceberg_catalog_name
+    ns_default = "default"
     ns_bronze = settings.iceberg_namespace_bronze
     ns_silver = settings.iceberg_namespace_silver
     ns_gold = settings.iceberg_namespace_gold
 
+    spark.sql(f"CREATE NAMESPACE IF NOT EXISTS {catalog}.{ns_default}")
     spark.sql(f"CREATE NAMESPACE IF NOT EXISTS {catalog}.{ns_bronze}")
     spark.sql(f"CREATE NAMESPACE IF NOT EXISTS {catalog}.{ns_silver}")
     spark.sql(f"CREATE NAMESPACE IF NOT EXISTS {catalog}.{ns_gold}")

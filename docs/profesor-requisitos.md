@@ -43,4 +43,5 @@
 - Se mantiene la arquitectura de streaming existente (Kafka -> Bronze) y se anade la ruta profesor (dbt + Thrift + DAG maestro).
 - No se renombraron tablas del dominio actual; dbt se adapto a `cryptolake.silver.ohlcv_1m`.
 - La carga batch de APIs del profesor (`daily_prices/fear_greed`) se mantiene como opcion de ingesta, no como reemplazo del flujo principal.
+- Kafka se mantiene en modo ZooKeeper (desviacion respecto a KRaft en fase 1-2 del profesor), documentado en `docs/adr/0001-kafka-mode.md`.
 - Decisiones ambiguas documentadas en `docs/adr/ADR-0001-profesor-adaptacion.md`.

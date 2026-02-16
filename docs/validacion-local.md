@@ -79,3 +79,49 @@ Resultado validado:
 ## 6) Nota sobre Make en Windows
 - Si `make` no esta instalado en PowerShell, usar los comandos `docker exec` equivalentes documentados en `README.md`.
 - En WSL2 (recomendado) los targets Make funcionan sin cambios.
+
+## 7) Evidencia de evaluacion
+
+### A. Spark Thrift requerido por dbt (fases 5-6)
+Comandos:
+1. `Test-NetConnection -ComputerName localhost -Port 10000 -InformationLevel Quiet`
+2. `docker logs spark-thrift 2>&1 | Select-String -Pattern "HiveThriftServer2|ThriftBinaryCLIService" | Select-Object -Last 20`
+3. `docker exec airflow-webserver bash -lc "cd /opt/airflow/src/transformation/dbt_cryptolake && dbt debug --profiles-dir . --target prod"`
+4. `docker exec airflow-webserver bash -lc "cd /opt/airflow/src/transformation/dbt_cryptolake && dbt run --profiles-dir . --target prod"`
+5. `docker exec airflow-webserver bash -lc "cd /opt/airflow/src/transformation/dbt_cryptolake && dbt test --profiles-dir . --target prod"`
+
+Outputs clave esperados:
+- `True` en el puerto `10000`.
+- Logs con `HiveThriftServer2 started` y `ThriftBinaryCLIService ... started`.
+- `dbt debug`: `All checks passed`.
+- `dbt run`: `PASS=4 ... ERROR=0`.
+- `dbt test`: `PASS=16 ... ERROR=0`.
+
+### B. Bronze -> Silver -> Gold (fases 3-4 y 5-6)
+Comando:
+- `docker exec spark-master /opt/spark/bin/spark-sql -e "SHOW TABLES IN cryptolake.bronze; SHOW TABLES IN cryptolake.silver; SHOW TABLES IN cryptolake.gold; SELECT COUNT(*) AS bronze_count FROM cryptolake.bronze.futures_trades; SELECT COUNT(*) AS silver_count FROM cryptolake.silver.ohlcv_1m; SELECT COUNT(*) AS gold_count FROM cryptolake.gold.fact_ohlcv_1m;"`
+
+Outputs clave validados:
+- Bronze: `futures_trades`
+- Silver: `ohlcv_1m`
+- Gold (dbt): `dim_dates`, `dim_symbols`, `fact_ohlcv_1m`
+- Conteos: Bronze `143632`, Silver `168`, Gold `168`
+
+### C. DAG master en SUCCESS (fase 5-6)
+Comandos:
+1. `docker exec airflow-webserver airflow dags unpause cryptolake_full_pipeline`
+2. `docker exec airflow-webserver airflow dags trigger cryptolake_full_pipeline --run-id eval_YYYYMMDD_HHMMSS`
+3. `docker exec airflow-webserver airflow dags list-runs -d cryptolake_full_pipeline -o table`
+4. `docker exec airflow-webserver airflow dags state cryptolake_full_pipeline <execution_date_del_run>`
+5. `docker exec airflow-webserver airflow tasks states-for-dag-run cryptolake_full_pipeline <run_id>`
+
+Output clave validado (2026-02-16):
+- Run `eval_20260216_194054` en estado `success`.
+- Todas las tasks en `success` (incluyendo `silver_processing.*`, `gold_transformation.dbt_run`, `gold_transformation.dbt_test`).
+
+### D. Troubleshooting corto
+- `LEADER_NOT_AVAILABLE` en Kafka: esperar 10-20s y reintentar.
+- Reinicio limpio de Kafka/ZooKeeper:
+  - `make reset-kafka`
+- Si `available-now` lee 0 tras reset:
+  - `make clean-checkpoints`

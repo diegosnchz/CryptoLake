@@ -9,6 +9,7 @@
 
 | Requisito (profe) | Estado inicial | Accion aplicada | Estado final | Evidencia / prueba |
 |---|---|---|---|---|
+| Kafka en modo KRaft (sin ZooKeeper) segun fases 1-2 | Falta | Se mantiene Kafka + ZooKeeper para no romper el stack estable ya validado; se documenta decision conservadora | Aceptado como desviacion | `docker compose ps` muestra `zookeeper` activo y `docker-compose.yml` usa `KAFKA_ZOOKEEPER_CONNECT` |
 | Spark Thrift en `10000` y reutilizacion imagen Spark | Falta | Se agrego `spark-thrift` y `image: cryptolake-spark` compartida, limitando Thrift a 1 core para no bloquear batch | Cerrado | `docker compose ps` muestra `spark-thrift` con `0.0.0.0:10000->10000` |
 | Verificacion de conectividad Thrift | Falta | Se agrego `spark-thrift-check` en `Makefile` + comando equivalente en README | Cerrado | `docker exec airflow-webserver python -c "import socket; ..."` -> `spark-thrift:10000 reachable` |
 | Proyecto dbt completo (`dbt_project.yml`, `profiles.yml`, `sources.yml`, staging/marts) | Parcial | Se estructuro `src/transformation/dbt_cryptolake/` con profile `cryptolake`, source silver y modelos staging/marts | Cerrado | `dbt debug/run/test` exitosos sobre `spark-thrift` |
@@ -24,3 +25,4 @@
 ## Gaps que quedan (aceptados)
 - Requisitos de fases 3-4 centrados en dominio batch del profesor (`historical_prices`, `fear_greed`, `MERGE INTO` sobre `daily_prices`) quedan en estado `Parcial` porque este repo prioriza streaming de futuros (`futures_trades` -> `ohlcv_1m`) y no se reemplazo esa arquitectura.
 - Esta diferencia es intencional y documentada en `docs/adr/ADR-0001-profesor-adaptacion.md`.
+- Kafka continua en modo ZooKeeper (no KRaft) por estabilidad y compatibilidad del entorno actual; decision documentada en `docs/adr/0001-kafka-mode.md`.

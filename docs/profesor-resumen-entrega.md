@@ -48,3 +48,16 @@
   - `dbt run`: PASS (4 modelos)
   - `dbt test`: PASS (16 tests)
   - Conteos Iceberg: Bronze `143632`, Silver `168`, Gold `168`
+
+## Ruta evaluada (profesor) vs ruta alumno
+- Ruta alumno (se mantiene):
+  - Gold por PySpark (`silver_to_gold_daily.py` -> `cryptolake.gold.futures_daily_stats`).
+- Ruta profesor (la usada para evaluacion):
+  - `spark-thrift` (`localhost:10000`) + `dbt run/test` sobre `cryptolake.silver.ohlcv_1m`.
+  - DAG maestro `cryptolake_full_pipeline` en Airflow.
+- Secuencia corta de evaluacion:
+  1. `docker compose up -d --build ... spark-thrift ... airflow-webserver airflow-scheduler ...`
+  2. `docker exec airflow-webserver bash -lc "cd /opt/airflow/src/transformation/dbt_cryptolake && dbt debug --profiles-dir . --target prod"`
+  3. `docker exec airflow-webserver bash -lc "cd /opt/airflow/src/transformation/dbt_cryptolake && dbt run --profiles-dir . --target prod"`
+  4. `docker exec airflow-webserver bash -lc "cd /opt/airflow/src/transformation/dbt_cryptolake && dbt test --profiles-dir . --target prod"`
+  5. `docker exec airflow-webserver airflow dags trigger cryptolake_full_pipeline --run-id eval_YYYYMMDD_HHMMSS`

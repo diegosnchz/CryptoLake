@@ -97,7 +97,8 @@ Bronze streaming runs as a service.
 - Gap y cierre aplicado: `docs/profesor-gap.md`
 - Validacion local paso a paso: `docs/validacion-local.md`
 - Resumen de entrega: `docs/profesor-resumen-entrega.md`
-- Decisiones de adaptacion: `docs/adr/ADR-0001-profesor-adaptacion.md`
+- ADR Kafka (KRaft vs ZooKeeper): `docs/adr/0001-kafka-mode.md`
+- ADR adaptacion de dominio: `docs/adr/ADR-0001-profesor-adaptacion.md`
 
 ## Developer commands
 - `make kafka-peek`

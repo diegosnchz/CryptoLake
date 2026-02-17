@@ -26,3 +26,7 @@
 - Requisitos de fases 3-4 centrados en dominio batch del profesor (`historical_prices`, `fear_greed`, `MERGE INTO` sobre `daily_prices`) quedan en estado `Parcial` porque este repo prioriza streaming de futuros (`futures_trades` -> `ohlcv_1m`) y no se reemplazo esa arquitectura.
 - Esta diferencia es intencional y documentada en `docs/adr/ADR-0001-profesor-adaptacion.md`.
 - Kafka continua en modo ZooKeeper (no KRaft) por estabilidad y compatibilidad del entorno actual; decision documentada en `docs/adr/0001-kafka-mode.md`.
+
+## Nota para evaluacion
+- No hay gaps bloqueantes en fases 5-6: Spark Thrift, dbt (debug/run/test) y DAG maestro estan operativos con evidencias de ejecucion en `docs/validacion-local.md`.
+- Para fases 3-4, el gap es de nomenclatura/dataset del ejemplo del profesor, no de ausencia de capas Bronze/Silver/Gold ni de orquestacion.

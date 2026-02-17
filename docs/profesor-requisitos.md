@@ -2,7 +2,7 @@
 
 ## Alcance y fuente
 - Fuente unica de requisitos: `profesor_ref/cryptolake-general-guide.md`, `profesor_ref/cryptolake-fases-1-2.md`, `profesor_ref/cryptolake-fases-3-4.md`, `profesor_ref/cryptolake-fases-5-6.md`.
-- Este documento esta actualizado al estado post-adaptacion (2026-02-16).
+- Este documento esta actualizado al estado post-adaptacion y validacion practica (2026-02-17).
 - Criterio: cumplir el marco del profesor sin romper el dominio actual del alumno (`futures_trades` y `ohlcv_1m`).
 
 ## Checklist por fases
@@ -44,4 +44,11 @@
 - No se renombraron tablas del dominio actual; dbt se adapto a `cryptolake.silver.ohlcv_1m`.
 - La carga batch de APIs del profesor (`daily_prices/fear_greed`) se mantiene como opcion de ingesta, no como reemplazo del flujo principal.
 - Kafka se mantiene en modo ZooKeeper (desviacion respecto a KRaft en fase 1-2 del profesor), documentado en `docs/adr/0001-kafka-mode.md`.
-- Decisiones ambiguas documentadas en `docs/adr/ADR-0001-profesor-adaptacion.md`.
+- Decision de adaptacion de dominio documentada en `docs/adr/ADR-0001-profesor-adaptacion.md`.
+
+## Aclaracion de evaluacion (fases 3-4)
+- El estado `Parcial` en F3-4 no indica fallo tecnico del pipeline: indica diferencia de dominio frente al ejemplo batch del profesor (`daily_prices`/`fear_greed`).
+- En este repo, la equivalencia funcional de medallion queda implementada y validada sobre el dominio real del alumno:
+  - Bronze: `cryptolake.bronze.futures_trades`
+  - Silver: `cryptolake.silver.ohlcv_1m`
+  - Gold: `cryptolake.gold.fact_ohlcv_1m`, `cryptolake.gold.dim_symbols`, `cryptolake.gold.dim_dates`

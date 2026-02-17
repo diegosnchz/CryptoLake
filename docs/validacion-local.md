@@ -1,7 +1,7 @@
 ﻿# Validacion local (Docker Compose)
 
 ## Fecha de validacion
-- Ejecutado el **2026-02-16** en entorno local con Docker Compose.
+- Ejecutado el **2026-02-17** en entorno local con Docker Compose.
 
 ## 1) Arranque limpio
 1. `cp .env.example .env`
@@ -46,7 +46,7 @@ Comprobacion:
 - Nota:
   - `spark-thrift` esta limitado a 1 core (`spark.cores.max=1`) para evitar bloquear jobs batch de Spark.
 - Resultado validado en esta corrida:
-  - `rows_in=143632`, `rows_valid=143632`, `rows_dropped=0`.
+  - `rows_in=477519`, `rows_valid=477519`, `rows_dropped=0`.
 
 ### Gold (dbt)
 - `docker exec airflow-webserver bash -lc "cd /opt/airflow/src/transformation/dbt_cryptolake && dbt debug --profiles-dir . --target prod"`
@@ -62,10 +62,10 @@ Comprobacion:
 Comando:
 - `docker exec spark-master /opt/spark/bin/spark-sql -e "SELECT COUNT(*) AS bronze_count FROM cryptolake.bronze.futures_trades; SELECT COUNT(*) AS silver_count FROM cryptolake.silver.ohlcv_1m; SELECT COUNT(*) AS gold_count FROM cryptolake.gold.fact_ohlcv_1m;"`
 
-Resultado validado (2026-02-16):
-- `bronze_count = 143632`
-- `silver_count = 168`
-- `gold_count = 168`
+Resultado validado (2026-02-17):
+- `bronze_count = 477519`
+- `silver_count = 564`
+- `gold_count = 564`
 
 ## 5) Airflow full pipeline
 
@@ -105,7 +105,7 @@ Outputs clave validados:
 - Bronze: `futures_trades`
 - Silver: `ohlcv_1m`
 - Gold (dbt): `dim_dates`, `dim_symbols`, `fact_ohlcv_1m`
-- Conteos: Bronze `143632`, Silver `168`, Gold `168`
+- Conteos: Bronze `477519`, Silver `564`, Gold `564`
 
 ### C. DAG master en SUCCESS (fase 5-6)
 Comandos:
@@ -115,8 +115,8 @@ Comandos:
 4. `docker exec airflow-webserver airflow dags state cryptolake_full_pipeline <execution_date_del_run>`
 5. `docker exec airflow-webserver airflow tasks states-for-dag-run cryptolake_full_pipeline <run_id>`
 
-Output clave validado (2026-02-16):
-- Run `eval_20260216_194054` en estado `success`.
+Output clave validado (2026-02-17):
+- Run `eval_20260217_codex_final` en estado `success`.
 - Todas las tasks en `success` (incluyendo `silver_processing.*`, `gold_transformation.dbt_run`, `gold_transformation.dbt_test`).
 
 ### D. Troubleshooting corto
@@ -125,3 +125,6 @@ Output clave validado (2026-02-16):
   - `make reset-kafka`
 - Si `available-now` lee 0 tras reset:
   - `make clean-checkpoints`
+- En Windows `cmd`, `Test-NetConnection` no existe:
+  - usar PowerShell: `Test-NetConnection -ComputerName localhost -Port 10000 -InformationLevel Quiet`
+  - o desde `cmd`: `powershell -Command "Test-NetConnection -ComputerName localhost -Port 10000 -InformationLevel Quiet"`

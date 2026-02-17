@@ -17,5 +17,5 @@ cryptolake:
       port: 10000
       user: dbt
       schema: gold
-      threads: 2
+      threads: 1
       connect_timeout: 30

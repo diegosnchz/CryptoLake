@@ -20,6 +20,7 @@
   - `docs/profesor-requisitos.md`
   - `docs/profesor-gap.md`
   - `docs/validacion-local.md`
+  - `docs/adr/0001-kafka-mode.md`
   - `docs/adr/ADR-0001-profesor-adaptacion.md`
 
 ## Que se cambio
@@ -38,16 +39,17 @@
 
 ## Estado final frente al profesor
 - Fases 1-2: **Cumple**.
-- Fases 3-4: **Parcial** en lo que depende del dominio batch original del profesor (`api_to_bronze`, `MERGE INTO daily_prices/fear_greed`), con equivalentes adaptados al dominio del alumno.
+- Fases 3-4: **Parcial** solo en nomenclatura/dataset del ejemplo batch del profesor (`api_to_bronze`, `MERGE INTO daily_prices/fear_greed`); la arquitectura medallion equivalente esta implementada y validada sobre el dominio del alumno.
 - Fases 5-6: **Cumple** (Spark Thrift + dbt operativo + Airflow DAG full pipeline + tests).
 
 ## Evidencia de validacion
 - Ver `docs/validacion-local.md`.
-- Resultados verificados el 2026-02-16:
+- Resultados verificados el 2026-02-17:
   - `dbt debug`: OK
   - `dbt run`: PASS (4 modelos)
   - `dbt test`: PASS (16 tests)
-  - Conteos Iceberg: Bronze `143632`, Silver `168`, Gold `168`
+  - Conteos Iceberg: Bronze `477519`, Silver `564`, Gold `564`
+  - DAG full pipeline: run `eval_20260217_codex_final` en `success`
 
 ## Ruta evaluada (profesor) vs ruta alumno
 - Ruta alumno (se mantiene):

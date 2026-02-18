@@ -13,41 +13,44 @@ router = APIRouter(prefix="/analytics", tags=["analytics"])
 @router.get("/market-overview", response_model=MarketOverview)
 def market_overview(client: SparkThriftClient = Depends(get_thrift_client)) -> MarketOverview:
     """Return top-level overview metrics."""
-    query = """
+    stats_query = """
         SELECT
-            (SELECT COUNT(*) FROM gold.dim_coins) AS total_coins,
-            (SELECT COUNT(*) FROM gold.fact_market_daily) AS total_fact_rows,
-            (SELECT MAX(price_date) FROM gold.fact_market_daily) AS latest_price_date,
-            (
-                SELECT ROUND(AVG(CAST(fear_greed_value AS DOUBLE)), 2)
-                FROM (
-                    SELECT
-                        price_date,
-                        MAX(fear_greed_value) AS fear_greed_value
-                    FROM gold.fact_market_daily
-                    WHERE fear_greed_value IS NOT NULL
-                    GROUP BY price_date
-                ) x
-            ) AS avg_fear_greed
+            (SELECT COUNT(*) FROM cryptolake.gold.dim_coins) AS total_coins,
+            (SELECT COUNT(*) FROM cryptolake.gold.fact_market_daily) AS total_fact_rows,
+            (SELECT MIN(price_date) FROM cryptolake.gold.fact_market_daily) AS date_range_start,
+            (SELECT MAX(price_date) FROM cryptolake.gold.fact_market_daily) AS date_range_end
+    """
+    sentiment_query = """
+        SELECT
+            fear_greed_value AS latest_fear_greed,
+            classification AS latest_sentiment
+        FROM cryptolake.silver.fear_greed
+        ORDER BY index_date DESC
+        LIMIT 1
     """
     try:
-        row = client.fetch_one(query=query) or {
+        stats_row = client.fetch_one(query=stats_query) or {
             "total_coins": 0,
             "total_fact_rows": 0,
-            "latest_price_date": None,
-            "avg_fear_greed": None,
+            "date_range_start": None,
+            "date_range_end": None,
+        }
+        sentiment_row = client.fetch_one(query=sentiment_query) or {
+            "latest_fear_greed": None,
+            "latest_sentiment": None,
         }
     except Exception as exc:
         raise HTTPException(
             status_code=503,
             detail=f"Spark Thrift query failed: {exc}",
         ) from exc
-    return MarketOverview.model_validate(row)
+    payload = {**stats_row, **sentiment_row}
+    return MarketOverview.model_validate(payload)
 
 
 @router.get("/coins", response_model=list[CoinResponse])
 def list_coins(
-    limit: int = Query(default=20, ge=1, le=200),
+    limit: int = Query(default=200, ge=1, le=1000),
     client: SparkThriftClient = Depends(get_thrift_client),
 ) -> list[CoinResponse]:
     """Return list of coins from dim_coins."""
@@ -64,8 +67,8 @@ def list_coins(
                     avg_price,
                     avg_daily_volume,
                     price_range_pct
-                FROM gold.dim_coins
-                ORDER BY coin_id
+                FROM cryptolake.gold.dim_coins
+                ORDER BY avg_price DESC
                 LIMIT %s
             """,
             params=(limit,),
@@ -80,7 +83,7 @@ def list_coins(
 
 @router.get("/fear-greed", response_model=list[FearGreedResponse])
 def fear_greed_history(
-    days: int = Query(default=30, ge=1, le=365),
+    limit: int = Query(default=30, ge=1, le=365),
     client: SparkThriftClient = Depends(get_thrift_client),
 ) -> list[FearGreedResponse]:
     """Return recent Fear and Greed values."""
@@ -88,16 +91,14 @@ def fear_greed_history(
         rows = client.fetch_all(
             query="""
                 SELECT
-                    price_date AS index_date,
-                    CAST(MAX(fear_greed_value) AS INT) AS fear_greed_value,
-                    MAX(market_sentiment) AS classification
-                FROM gold.fact_market_daily
-                WHERE fear_greed_value IS NOT NULL
-                GROUP BY price_date
+                    index_date,
+                    CAST(fear_greed_value AS INT) AS fear_greed_value,
+                    classification
+                FROM cryptolake.silver.fear_greed
                 ORDER BY index_date DESC
                 LIMIT %s
             """,
-            params=(days,),
+            params=(limit,),
         )
     except Exception as exc:
         raise HTTPException(

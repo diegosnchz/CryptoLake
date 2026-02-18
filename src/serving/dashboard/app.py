@@ -1,126 +1,219 @@
-"""Streamlit dashboard for CryptoLake."""
+"""Interactive Streamlit dashboard for CryptoLake."""
 
 from __future__ import annotations
 
 import os
 
 import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
 import requests
 import streamlit as st
 
-API_BASE_URL = os.getenv("CRYPTO_API_BASE_URL", "http://localhost:8000")
-REQUEST_TIMEOUT = 15
+API_URL = os.getenv("API_URL") or os.getenv("CRYPTO_API_BASE_URL", "http://localhost:8000")
+REQUEST_TIMEOUT = 10
+
+st.set_page_config(
+    page_title="CryptoLake Dashboard",
+    page_icon="CL",
+    layout="wide",
+)
 
 
-def api_get(path: str, params: dict | None = None) -> dict | list:
-    """Execute GET request against serving API."""
-    response = requests.get(f"{API_BASE_URL}{path}", params=params, timeout=REQUEST_TIMEOUT)
-    response.raise_for_status()
-    return response.json()
-
-
-@st.cache_data(ttl=60)
-def get_overview() -> dict:
-    return api_get("/analytics/market-overview")
-
-
-@st.cache_data(ttl=60)
-def get_coins(limit: int = 100) -> list[dict]:
-    return api_get("/analytics/coins", params={"limit": limit})
-
-
-@st.cache_data(ttl=60)
-def get_prices(coin_id: str, days: int) -> list[dict]:
-    return api_get(f"/prices/{coin_id}", params={"days": days})
-
-
-@st.cache_data(ttl=60)
-def get_fear_greed(days: int = 30) -> list[dict]:
-    return api_get("/analytics/fear-greed", params={"days": days})
-
-
-def render_header() -> None:
-    st.set_page_config(page_title="CryptoLake Dashboard", page_icon="CL", layout="wide")
-    st.title("CryptoLake Market Dashboard")
-    st.caption("Serving layer on FastAPI + Spark Thrift + Iceberg Gold")
-
-
-def render_health() -> bool:
+def api_get(endpoint: str):
+    """Call the serving API and return parsed JSON."""
     try:
-        health = api_get("/health")
+        response = requests.get(f"{API_URL}{endpoint}", timeout=REQUEST_TIMEOUT)
+        response.raise_for_status()
+        return response.json()
     except Exception as exc:
-        st.error(f"API unavailable: {exc}")
-        return False
-
-    status = health.get("status", "unknown")
-    if status == "healthy":
-        st.success("API and Spark Thrift are healthy.")
-    else:
-        st.warning(f"API status: {status}. Details: {health.get('details', 'n/a')}")
-    return True
+        st.error(f"Error calling API: {exc}")
+        return None
 
 
-def render_overview_metrics() -> None:
-    overview = get_overview()
-    col_a, col_b, col_c, col_d = st.columns(4)
-    col_a.metric("Tracked Coins", int(overview.get("total_coins", 0)))
-    col_b.metric("Fact Rows", int(overview.get("total_fact_rows", 0)))
-    col_c.metric("Latest Date", str(overview.get("latest_price_date", "-")))
-    avg_fg = overview.get("avg_fear_greed")
-    col_d.metric("Avg Fear&Greed", f"{avg_fg:.2f}" if isinstance(avg_fg, (int, float)) else "-")
+def render_kpi_card(title: str, value: str, subtitle: str = "") -> str:
+    """Return an HTML card used for overview KPIs."""
+    subtitle_html = f'<div class="kpi-subtitle">{subtitle}</div>' if subtitle else ""
+    return (
+        '<div class="kpi-card">'
+        f'<div class="kpi-title">{title}</div>'
+        f'<div class="kpi-value">{value}</div>'
+        f"{subtitle_html}"
+        "</div>"
+    )
 
 
-def render_price_section() -> None:
-    coins = get_coins(limit=200)
+st.markdown(
+    """
+    <style>
+      .kpi-card {
+        background: rgba(33, 40, 53, 0.6);
+        border: 1px solid rgba(120, 129, 149, 0.35);
+        border-radius: 10px;
+        padding: 14px 16px;
+        min-height: 86px;
+      }
+      .kpi-title {
+        color: #aeb6c2;
+        font-size: 0.88rem;
+        margin-bottom: 6px;
+      }
+      .kpi-value {
+        color: #f6f8fb;
+        font-size: 1.25rem;
+        font-weight: 700;
+        line-height: 1.2;
+      }
+      .kpi-subtitle {
+        color: #9ca6b5;
+        font-size: 0.85rem;
+        margin-top: 6px;
+      }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+
+st.title("CryptoLake - Crypto Analytics Dashboard")
+st.caption("Powered by Apache Iceberg + Spark + dbt + FastAPI")
+
+health = api_get("/api/v1/health")
+if not health or health.get("status") != "healthy":
+    st.warning("API not available. Make sure the pipeline has run.")
+    st.stop()
+
+st.header("Market Overview")
+overview = api_get("/api/v1/analytics/market-overview")
+if overview:
+    col1, col2, col3, col4 = st.columns(4)
+    col1.markdown(
+        render_kpi_card("Coins Tracked", str(overview.get("total_coins", 0))),
+        unsafe_allow_html=True,
+    )
+    col2.markdown(
+        render_kpi_card("Fact Rows", f"{overview.get('total_fact_rows', 0):,}"),
+        unsafe_allow_html=True,
+    )
+    col3.markdown(
+        render_kpi_card(
+            "Fear & Greed",
+            str(overview.get("latest_fear_greed", "-")),
+            str(overview.get("latest_sentiment", "")),
+        ),
+        unsafe_allow_html=True,
+    )
+    col4.markdown(
+        render_kpi_card(
+            "Date Range",
+            f"{overview.get('date_range_start', '?')} -> {overview.get('date_range_end', '?')}",
+        ),
+        unsafe_allow_html=True,
+    )
+
+st.header("Price Analysis")
+coins = api_get("/api/v1/analytics/coins")
+if coins:
     coin_ids = [coin["coin_id"] for coin in coins]
-    if not coin_ids:
-        st.warning("No coins available in dim_coins yet.")
-        return
+    selected_coin = st.selectbox("Select cryptocurrency:", coin_ids)
+    prices = api_get(f"/api/v1/prices/{selected_coin}?limit=365")
 
-    st.subheader("Price Series")
-    selected_coin = st.selectbox("Coin", options=coin_ids, index=0)
-    days = st.slider("Days", min_value=7, max_value=180, value=60, step=1)
+    if prices:
+        frame = pd.DataFrame(prices)
+        frame["price_date"] = pd.to_datetime(frame["price_date"])
+        frame = frame.sort_values("price_date")
 
-    rows = get_prices(selected_coin, days=days)
-    frame = pd.DataFrame(rows)
-    if frame.empty:
-        st.warning("No price data available for selected coin.")
-        return
+        fig = go.Figure()
+        fig.add_trace(
+            go.Scatter(
+                x=frame["price_date"],
+                y=frame["price_usd"],
+                name="Price",
+                line={"color": "#4A90D9", "width": 2},
+            )
+        )
+        if "moving_avg_7d" in frame.columns:
+            fig.add_trace(
+                go.Scatter(
+                    x=frame["price_date"],
+                    y=frame["moving_avg_7d"],
+                    name="MA 7d",
+                    line={"color": "#F5A623", "dash": "dash"},
+                )
+            )
+        if "moving_avg_30d" in frame.columns:
+            fig.add_trace(
+                go.Scatter(
+                    x=frame["price_date"],
+                    y=frame["moving_avg_30d"],
+                    name="MA 30d",
+                    line={"color": "#1E8449", "dash": "dot"},
+                )
+            )
+        fig.update_layout(
+            title=f"{selected_coin.title()} - Price & Moving Averages",
+            xaxis_title="Date",
+            yaxis_title="Price (USD)",
+            template="plotly_dark",
+            height=450,
+        )
+        st.plotly_chart(fig, use_container_width=True)
 
-    frame["price_date"] = pd.to_datetime(frame["price_date"])
-    frame = frame.sort_values("price_date")
-    chart_frame = frame.set_index("price_date")[["price_usd", "moving_avg_7d", "moving_avg_30d"]]
-    st.line_chart(chart_frame)
+        st.subheader("Coin Stats")
+        coins_df = pd.DataFrame(coins).sort_values("avg_price", ascending=False).head(20)
+        coins_df = coins_df.fillna("")
+        table = go.Figure(
+            data=[
+                go.Table(
+                    header={
+                        "values": [col.replace("_", " ").title() for col in coins_df.columns],
+                        "fill_color": "#1f2a3a",
+                        "font": {"color": "white", "size": 12},
+                        "align": "left",
+                    },
+                    cells={
+                        "values": [coins_df[col] for col in coins_df.columns],
+                        "fill_color": "#0f1724",
+                        "font": {"color": "#d8dee9", "size": 11},
+                        "align": "left",
+                    },
+                )
+            ]
+        )
+        table.update_layout(
+            margin={"l": 0, "r": 0, "t": 8, "b": 0},
+            height=430,
+            template="plotly_dark",
+        )
+        st.plotly_chart(table, use_container_width=True)
 
-    with st.expander("Latest rows", expanded=False):
-        st.dataframe(frame.tail(10), use_container_width=True)
+st.header("Fear & Greed Index")
+fear_greed = api_get("/api/v1/analytics/fear-greed?limit=60")
+if fear_greed:
+    sentiment_frame = pd.DataFrame(fear_greed)
+    sentiment_frame["index_date"] = pd.to_datetime(sentiment_frame["index_date"])
+    sentiment_frame = sentiment_frame.sort_values("index_date")
 
+    color_map = {
+        "Extreme Fear": "#DC3545",
+        "Fear": "#FD7E14",
+        "Neutral": "#FFC107",
+        "Greed": "#28A745",
+        "Extreme Greed": "#20C997",
+    }
 
-def render_sentiment_section() -> None:
-    st.subheader("Fear & Greed")
-    rows = get_fear_greed(days=60)
-    frame = pd.DataFrame(rows)
-    if frame.empty:
-        st.info("No sentiment data available.")
-        return
+    sentiment_fig = px.bar(
+        sentiment_frame,
+        x="index_date",
+        y="fear_greed_value",
+        color="classification",
+        color_discrete_map=color_map,
+        title="Fear & Greed Index (last 60 days)",
+        template="plotly_dark",
+        height=350,
+    )
+    sentiment_fig.add_hline(y=50, line_dash="dash", line_color="gray")
+    st.plotly_chart(sentiment_fig, use_container_width=True)
 
-    frame["index_date"] = pd.to_datetime(frame["index_date"])
-    frame = frame.sort_values("index_date")
-    st.line_chart(frame.set_index("index_date")[["fear_greed_value"]])
-    st.dataframe(frame.tail(10), use_container_width=True)
-
-
-def main() -> None:
-    render_header()
-    if not render_health():
-        return
-
-    render_overview_metrics()
-    st.divider()
-    render_price_section()
-    st.divider()
-    render_sentiment_section()
-
-
-if __name__ == "__main__":
-    main()
+st.divider()
+st.caption("CryptoLake - Apache Iceberg, Spark, dbt, Airflow, FastAPI, Streamlit")

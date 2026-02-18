@@ -70,6 +70,21 @@ with DAG(
     doc_md=__doc__,
 ) as dag:
     # ════════════════════════════════════════════════════════════
+    # INICIALIZACIÓN DE INFRA (namespaces Iceberg)
+    # ════════════════════════════════════════════════════════════
+    # Spark Thrift puede intentar abrir sesión en cryptolake.default.
+    # Si ese namespace no existe, dbt falla con "failed to connect".
+    # Por eso aseguramos los namespaces antes del resto del pipeline.
+    init_namespaces = BashOperator(
+        task_id="init_namespaces",
+        bash_command=(
+            "docker exec cryptolake-spark-master "
+            "/opt/spark/bin/spark-submit --master 'local[1]' "
+            "/opt/spark/work/src/processing/batch/init_namespaces.py"
+        ),
+    )
+
+    # ════════════════════════════════════════════════════════════
     # GRUPO 1: INGESTA BATCH
     # ════════════════════════════════════════════════════════════
     # Descarga datos de las APIs externas.
@@ -182,4 +197,4 @@ with DAG(
     # Esto se visualiza en la UI de Airflow como un grafo
     # de izquierda a derecha con flechas entre los grupos.
     # ════════════════════════════════════════════════════════════
-    ingestion_group >> bronze_group >> silver_group >> gold_group >> quality_group
+    init_namespaces >> ingestion_group >> bronze_group >> silver_group >> gold_group >> quality_group

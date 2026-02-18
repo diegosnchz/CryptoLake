@@ -8,7 +8,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 COPY docker/api/requirements.txt /tmp/requirements.txt
-RUN pip install --no-cache-dir -r /tmp/requirements.txt
+RUN pip install \
+    --no-cache-dir \
+    --default-timeout=300 \
+    --retries=10 \
+    -r /tmp/requirements.txt
 
 COPY src /app/src
 

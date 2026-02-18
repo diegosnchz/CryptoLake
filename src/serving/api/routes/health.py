@@ -13,20 +13,16 @@ router = APIRouter(tags=["health"])
 @router.get("/health", response_model=HealthResponse)
 def health(client: SparkThriftClient = Depends(get_thrift_client)) -> HealthResponse:
     """Return health status for serving API and Spark Thrift connectivity."""
-    connected = client.ping()
-    tables_available = client.count_existing_gold_tables() if connected else 0
-
-    if connected and tables_available >= 3:
+    try:
+        tables = client.fetch_all("SHOW TABLES IN cryptolake.gold")
         return HealthResponse(
             status="healthy",
             thrift_connected=True,
-            tables_available=tables_available,
-            details="Serving API connected to Spark Thrift and Gold tables are available.",
+            tables_available=len(tables),
         )
-
-    return HealthResponse(
-        status="degraded",
-        thrift_connected=connected,
-        tables_available=tables_available,
-        details="Thrift connectivity or gold tables are incomplete.",
-    )
+    except Exception:
+        return HealthResponse(
+            status="degraded",
+            thrift_connected=False,
+            tables_available=0,
+        )

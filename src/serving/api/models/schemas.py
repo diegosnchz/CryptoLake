@@ -15,6 +15,8 @@ class PriceResponse(BaseModel):
     coin_id: str
     price_date: date
     price_usd: float
+    market_cap_usd: float | None = None
+    volume_24h_usd: float | None = None
     price_change_pct_1d: float | None = None
     moving_avg_7d: float | None = None
     moving_avg_30d: float | None = None
@@ -57,8 +59,10 @@ class MarketOverview(BaseModel):
 
     total_coins: int
     total_fact_rows: int
-    latest_price_date: date | None = None
-    avg_fear_greed: float | None = None
+    date_range_start: date | None = None
+    date_range_end: date | None = None
+    latest_fear_greed: int | None = None
+    latest_sentiment: str | None = None
 
 
 class HealthResponse(BaseModel):

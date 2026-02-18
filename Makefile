@@ -163,4 +163,4 @@ airflow-trigger: ## Trigger manual del DAG completo en Airflow
 
 airflow-status: ## Ver estado de la última ejecución del DAG
 	docker exec cryptolake-airflow-scheduler \
-	    airflow dags list-runs -d cryptolake_full_pipeline --limit 5
+	    airflow dags list-runs -d cryptolake_full_pipeline

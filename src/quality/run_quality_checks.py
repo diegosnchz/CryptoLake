@@ -4,81 +4,113 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
+from typing import Sequence
 
 from pyspark.sql import SparkSession
+from pyspark.sql.types import DoubleType, StringType, StructField, StructType
 
 from src.quality.validators import (
     BronzeValidator,
+    CheckResult,
     CheckStatus,
     GoldValidator,
     SilverValidator,
 )
 
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+
+RESULTS_TABLE = "cryptolake.quality.check_results"
+RESULTS_SCHEMA = StructType(
+    [
+        StructField("check_name", StringType(), False),
+        StructField("layer", StringType(), False),
+        StructField("table_name", StringType(), False),
+        StructField("status", StringType(), False),
+        StructField("metric_value", DoubleType(), True),
+        StructField("threshold", DoubleType(), True),
+        StructField("message", StringType(), True),
+        StructField("checked_at", StringType(), False),
+        StructField("run_id", StringType(), False),
+    ]
+)
+
 
 def parse_args() -> argparse.Namespace:
     """Parse CLI arguments."""
-    parser = argparse.ArgumentParser(description="Run CryptoLake data quality checks")
+    parser = argparse.ArgumentParser(description="Run CryptoLake data quality checks.")
     parser.add_argument(
         "--layer",
+        action="append",
         choices=["bronze", "silver", "gold", "all"],
-        default="all",
-        help="Layer to validate.",
+        help="Layer to validate. Repeat --layer to run multiple layers.",
     )
-    parser.add_argument(
-        "--output",
-        default="",
-        help="Optional path for JSON report.",
-    )
+    parser.add_argument("--output", default="", help="Optional JSON report output path.")
     parser.add_argument(
         "--fail-on-warning",
         action="store_true",
-        help="Return non-zero exit code if warnings are found.",
+        help="Return non-zero exit code when warnings are found.",
     )
     return parser.parse_args()
 
 
-def run_checks(spark: SparkSession, layer: str) -> list[dict]:
-    """Run validators for selected layer and return serialized results."""
-    validators = []
-    if layer in ("bronze", "all"):
-        validators.append(BronzeValidator(spark))
-    if layer in ("silver", "all"):
-        validators.append(SilverValidator(spark))
-    if layer in ("gold", "all"):
-        validators.append(GoldValidator(spark))
+def resolve_layers(raw_layers: Sequence[str] | None) -> list[str]:
+    """Resolve CLI layers into concrete validator order."""
+    if not raw_layers:
+        return ["bronze", "silver", "gold"]
+    if "all" in raw_layers:
+        return ["bronze", "silver", "gold"]
 
-    all_results = []
-    for validator in validators:
-        validator.check_all()
-        all_results.extend(validator.results)
-    return [result.to_dict() for result in all_results]
+    ordered: list[str] = []
+    for layer in raw_layers:
+        if layer not in ordered:
+            ordered.append(layer)
+    return ordered
 
 
-def print_report(results: list[dict]) -> dict[str, int]:
-    """Print human-readable report and return status counters."""
+def run_checks(spark: SparkSession, layers: list[str]) -> list[CheckResult]:
+    """Run validators for selected layers."""
+    validators = {
+        "bronze": BronzeValidator(spark),
+        "silver": SilverValidator(spark),
+        "gold": GoldValidator(spark),
+    }
+
+    results: list[CheckResult] = []
+    for layer in layers:
+        results.extend(validators[layer].check_all())
+    return results
+
+
+def summarize(results: list[CheckResult]) -> dict[str, int]:
+    """Build status summary counters."""
     counters = {
         CheckStatus.PASSED.value: 0,
         CheckStatus.FAILED.value: 0,
         CheckStatus.WARNING.value: 0,
         CheckStatus.ERROR.value: 0,
     }
-
-    print("=" * 88)
-    print("CryptoLake Data Quality Report")
-    print("=" * 88)
     for result in results:
-        status = str(result["status"])
-        counters[status] += 1
-        print(
-            f"[{status.upper():7}] "
-            f"{result['layer']:<6} {result['check_name']:<24} "
-            f"{result['table_name']:<36} {result['message']}"
-        )
+        counters[result.status.value] += 1
+    return counters
 
+
+def print_report(results: list[CheckResult], counters: dict[str, int]) -> None:
+    """Print human-readable report to stdout."""
+    print("=" * 96)
+    print("CryptoLake Data Quality Report")
+    print("=" * 96)
+    for result in results:
+        print(
+            f"[{result.status.value.upper():7}] "
+            f"{result.layer:<6} {result.check_name:<26} {result.table_name:<36} {result.message}"
+        )
     total = len(results)
-    print("-" * 88)
+    print("-" * 96)
     print(
         f"Total={total} "
         f"Passed={counters['passed']} "
@@ -86,26 +118,58 @@ def print_report(results: list[dict]) -> dict[str, int]:
         f"Warnings={counters['warning']} "
         f"Errors={counters['error']}"
     )
-    print("=" * 88)
-    return counters
+    print("=" * 96)
 
 
-def save_output(path: str, results: list[dict], counters: dict[str, int]) -> None:
+def save_output(path: str, results: list[CheckResult], counters: dict[str, int]) -> None:
     """Save JSON report to path."""
-    payload = {"summary": counters, "results": results}
-    file_path = Path(path)
-    file_path.parent.mkdir(parents=True, exist_ok=True)
-    file_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-    print(f"JSON report written to: {file_path}")
+    payload = {"summary": counters, "results": [result.to_dict() for result in results]}
+    output_path = Path(path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    logger.info("JSON report written to %s", output_path)
+
+
+def table_exists(spark: SparkSession, table_name: str) -> bool:
+    """Check whether table exists in catalog."""
+    try:
+        spark.sql(f"DESCRIBE TABLE {table_name}")
+        return True
+    except Exception:
+        return False
+
+
+def persist_results(spark: SparkSession, results: list[CheckResult], run_id: str) -> None:
+    """Persist check results in Iceberg table."""
+    rows = [dict(**result.to_dict(), run_id=run_id) for result in results]
+    if not rows:
+        logger.info("No quality rows to persist.")
+        return
+
+    spark.sql("CREATE NAMESPACE IF NOT EXISTS cryptolake.quality")
+    dataframe = spark.createDataFrame(rows, schema=RESULTS_SCHEMA)
+
+    if table_exists(spark, RESULTS_TABLE):
+        dataframe.writeTo(RESULTS_TABLE).append()
+    else:
+        dataframe.writeTo(RESULTS_TABLE).using("iceberg").create()
+    logger.info("Persisted %s quality rows into %s", len(rows), RESULTS_TABLE)
 
 
 def main() -> int:
     """Program entry point."""
     args = parse_args()
-    spark = SparkSession.builder.appName(f"CryptoLake-Quality-{args.layer}").getOrCreate()
+    layers = resolve_layers(args.layer)
+    run_id = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+
+    spark = SparkSession.builder.appName("CryptoLake-Quality").getOrCreate()
     try:
-        results = run_checks(spark, args.layer)
-        counters = print_report(results)
+        logger.info("Running quality checks (run_id=%s, layers=%s)", run_id, layers)
+        results = run_checks(spark, layers)
+        counters = summarize(results)
+        print_report(results, counters)
+        persist_results(spark, results, run_id)
+
         if args.output:
             save_output(args.output, results, counters)
 

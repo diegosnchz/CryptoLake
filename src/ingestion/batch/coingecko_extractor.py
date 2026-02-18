@@ -6,7 +6,7 @@ Su API pública (sin key) permite hasta 30 requests/minuto.
 
 Endpoint que usamos:
     GET /coins/{id}/market_chart?vs_currency=usd&days=90&interval=daily
-    
+
     Retorna 3 arrays con [timestamp_ms, valor] para:
     - prices: Precio en USD
     - market_caps: Capitalización de mercado
@@ -15,6 +15,7 @@ Endpoint que usamos:
 Para ejecutar:
     python -m src.ingestion.batch.coingecko_extractor
 """
+
 import time
 from typing import Any
 
@@ -28,7 +29,7 @@ logger = structlog.get_logger()
 
 class CoinGeckoExtractor(BaseExtractor):
     """Extrae precios históricos y métricas de mercado de CoinGecko."""
-    
+
     def __init__(self, days: int = 90):
         """
         Args:
@@ -38,33 +39,33 @@ class CoinGeckoExtractor(BaseExtractor):
         super().__init__(source_name="coingecko")
         self.days = days
         self.base_url = settings.coingecko_base_url
-    
+
     def extract(self) -> list[dict[str, Any]]:
         """
         Extrae datos históricos de todos los coins configurados.
-        
+
         Para cada coin hace un GET request a la API de CoinGecko,
         y combina las tres series (precio, market cap, volumen)
         en registros individuales por timestamp.
-        
+
         Incluye retry con backoff exponencial para manejar rate limiting.
         CoinGecko free tier: ~10-30 calls/min según carga del servidor.
         """
         all_records: list[dict[str, Any]] = []
-        
+
         for i, coin_id in enumerate(settings.tracked_coins):
             try:
                 logger.info(
                     "extracting_coin",
                     coin=coin_id,
-                    progress=f"{i+1}/{len(settings.tracked_coins)}",
+                    progress=f"{i + 1}/{len(settings.tracked_coins)}",
                     days=self.days,
                 )
-                
+
                 # Retry con backoff exponencial: espera 30s, 60s, 120s
                 max_retries = 3
                 response = None
-                
+
                 for attempt in range(max_retries + 1):
                     # Llamada a la API
                     response = self.session.get(
@@ -80,12 +81,12 @@ class CoinGeckoExtractor(BaseExtractor):
                     # Si CoinGecko devuelve 429 (rate limited), esperar y reintentar
                     if response.status_code == 429:
                         if attempt < max_retries:
-                            wait_time = 30 * (2 ** attempt)  # 30s, 60s, 120s
+                            wait_time = 30 * (2**attempt)  # 30s, 60s, 120s
                             logger.warning(
-                                    "rate_limited",
-                                    coin=coin_id,
-                                    attempt=attempt + 1,
-                                    waiting_seconds=wait_time,
+                                "rate_limited",
+                                coin=coin_id,
+                                attempt=attempt + 1,
+                                waiting_seconds=wait_time,
                             )
                             time.sleep(wait_time)
                         else:
@@ -93,21 +94,21 @@ class CoinGeckoExtractor(BaseExtractor):
                             response.raise_for_status()
                     else:
                         break
-                
+
                 # Si hay error HTTP (429 = rate limit, 500 = server error), lanzar excepción
                 response.raise_for_status()
                 data = response.json()
-                
+
                 # CoinGecko devuelve arrays de [timestamp_ms, value]
                 prices = data.get("prices", [])
                 market_caps = data.get("market_caps", [])
                 volumes = data.get("total_volumes", [])
-                
+
                 # Combinar las tres series por índice
                 # (CoinGecko garantiza que están alineadas por timestamp)
                 for idx, price_point in enumerate(prices):
                     timestamp_ms, price = price_point
-                    
+
                     record = {
                         "coin_id": coin_id,
                         "timestamp_ms": int(timestamp_ms),
@@ -124,17 +125,17 @@ class CoinGeckoExtractor(BaseExtractor):
                         ),
                     }
                     all_records.append(record)
-                
+
                 logger.info(
                     "coin_extracted",
                     coin=coin_id,
                     datapoints=len(prices),
                 )
-                
+
                 # Rate limiting: CoinGecko free = 10-30 calls/min según carga
                 if i < len(settings.tracked_coins) - 1:
                     time.sleep(4)
-                
+
             except Exception as e:
                 logger.error(
                     "coin_extraction_failed",
@@ -144,9 +145,9 @@ class CoinGeckoExtractor(BaseExtractor):
                 )
                 # Continuar con el siguiente coin en vez de abortar todo
                 continue
-        
+
         return all_records
-    
+
     def validate(self, data: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """
         Valida que los registros tengan sentido:
@@ -156,31 +157,25 @@ class CoinGeckoExtractor(BaseExtractor):
         """
         valid = []
         invalid_count = 0
-        
+
         for record in data:
             price = record.get("price_usd")
             timestamp = record.get("timestamp_ms")
             coin = record.get("coin_id")
-            
-            if (
-                coin
-                and price is not None
-                and price > 0
-                and timestamp is not None
-                and timestamp > 0
-            ):
+
+            if coin and price is not None and price > 0 and timestamp is not None and timestamp > 0:
                 valid.append(record)
             else:
                 invalid_count += 1
                 if invalid_count <= 3:  # Solo logear los primeros 3
                     logger.warning("invalid_record_dropped", record=record)
-        
+
         if invalid_count > 3:
             logger.warning(
                 "additional_invalid_records",
                 count=invalid_count - 3,
             )
-        
+
         return valid
 
 
@@ -188,11 +183,11 @@ class CoinGeckoExtractor(BaseExtractor):
 if __name__ == "__main__":
     extractor = CoinGeckoExtractor(days=90)
     records = extractor.run()
-    
+
     # Mostrar resumen
     if records:
         coins = set(r["coin_id"] for r in records)
-        print(f"\n📊 Resumen de extracción:")
+        print("\n📊 Resumen de extracción:")
         print(f"   Total registros: {len(records)}")
         print(f"   Coins extraídos: {len(coins)}")
         for coin in sorted(coins):

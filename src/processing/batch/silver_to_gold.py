@@ -1,4 +1,3 @@
-from __future__ import annotations
 """
 Spark Batch Job: Silver → Gold (Modelo Dimensional)
 
@@ -18,44 +17,27 @@ Ejecución:
     docker exec cryptolake-spark-master \
         /opt/spark/bin/spark-submit /opt/spark/work/src/processing/batch/silver_to_gold.py
 """
+
+from __future__ import annotations
+
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import (
-    avg,
-    col,
-    count,
-    current_timestamp,
-    date_format,
-    dayofmonth,
-    dayofweek,
-    lag,
-    max as spark_max,
-    min as spark_min,
-    month,
-    quarter,
-    round as spark_round,
-    stddev,
-    weekofyear,
-    when,
-    year,
-)
-from pyspark.sql.window import Window
 
 
 def build_dim_coins(spark: SparkSession):
     """
     Construye la dimensión dim_coins.
-    
+
     Tipo: SCD Type 1 (Slowly Changing Dimension Type 1)
     Esto significa que cuando los datos cambian, simplemente sobrescribimos.
     No guardamos historial de cambios en la dimensión.
-    
+
     ¿Cuándo usarías Type 2? Cuando necesitas saber el valor histórico.
     Por ejemplo, si un coin cambia de nombre, querrías saber cómo se
     llamaba cuando hiciste cierto análisis. Para nuestro caso, Type 1
     es suficiente porque los stats se recalculan cada día.
     """
     print("\n📐 Construyendo dim_coins...")
-    
+
     spark.sql("""
         CREATE OR REPLACE TABLE cryptolake.gold.dim_coins
         USING iceberg
@@ -92,7 +74,7 @@ def build_dim_coins(spark: SparkSession):
         FROM cryptolake.silver.daily_prices
         GROUP BY coin_id
     """)
-    
+
     count = spark.table("cryptolake.gold.dim_coins").count()
     print(f"  ✅ dim_coins: {count} coins")
 
@@ -100,16 +82,16 @@ def build_dim_coins(spark: SparkSession):
 def build_dim_dates(spark: SparkSession):
     """
     Construye la dimensión dim_dates (calendario).
-    
+
     ¿Por qué una tabla de fechas?
     Porque "2024-02-25" es solo un dato. Pero para análisis necesitas
     saber: ¿es fin de semana? ¿qué trimestre? ¿qué mes?
-    
+
     En producción, esta tabla se carga una vez y cubre varios años.
     Aquí la generamos dinámicamente desde las fechas que tenemos.
     """
     print("\n📅 Construyendo dim_dates...")
-    
+
     spark.sql("""
         CREATE OR REPLACE TABLE cryptolake.gold.dim_dates
         USING iceberg
@@ -137,7 +119,7 @@ def build_dim_dates(spark: SparkSession):
         FROM cryptolake.silver.daily_prices
         ORDER BY date_day
     """)
-    
+
     count = spark.table("cryptolake.gold.dim_dates").count()
     print(f"  ✅ dim_dates: {count} fechas")
 
@@ -145,35 +127,35 @@ def build_dim_dates(spark: SparkSession):
 def build_fact_market_daily(spark: SparkSession):
     """
     Construye la tabla de hechos fact_market_daily.
-    
+
     Esta es la tabla más importante y compleja del star schema.
     Cada fila = 1 criptomoneda × 1 día, con todas las métricas.
-    
+
     Window Functions utilizadas:
-    
+
     LAG(): Accede a la fila anterior en la ventana.
         Uso: obtener el precio del día anterior para calcular % cambio.
-    
+
     AVG() OVER (ROWS BETWEEN N PRECEDING AND CURRENT ROW):
         Media móvil de los últimos N+1 días.
         Uso: Moving Average 7d y 30d (indicadores técnicos clásicos).
-    
+
     STDDEV() OVER (...):
         Desviación estándar sobre la ventana.
         Uso: Volatilidad — cuánto varía el precio.
-    
+
     Todas las ventanas se particionan por coin_id y ordenan por price_date.
     Esto significa que los cálculos son INDEPENDIENTES por cada moneda.
     """
     print("\n📊 Construyendo fact_market_daily...")
-    
+
     # Primero necesitamos leer Silver y registrar como vista temporal
     prices = spark.table("cryptolake.silver.daily_prices")
     fear_greed = spark.table("cryptolake.silver.fear_greed")
-    
+
     prices.createOrReplaceTempView("s_prices")
     fear_greed.createOrReplaceTempView("s_fear_greed")
-    
+
     spark.sql("""
         CREATE OR REPLACE TABLE cryptolake.gold.fact_market_daily
         USING iceberg
@@ -304,7 +286,7 @@ def build_fact_market_daily(spark: SparkSession):
         LEFT JOIN s_fear_greed fg
             ON pm.price_date = fg.index_date
     """)
-    
+
     count = spark.table("cryptolake.gold.fact_market_daily").count()
     print(f"  ✅ fact_market_daily: {count} registros")
 
@@ -313,23 +295,23 @@ if __name__ == "__main__":
     print("=" * 60)
     print("🚀 CryptoLake — Silver to Gold (Star Schema)")
     print("=" * 60)
-    
+
     spark = SparkSession.builder.appName("CryptoLake-SilverToGold").getOrCreate()
-    
+
     try:
         spark.sql("CREATE NAMESPACE IF NOT EXISTS cryptolake.gold LOCATION 's3://cryptolake-gold/'")
-        
+
         build_dim_coins(spark)
         build_dim_dates(spark)
         build_fact_market_daily(spark)
-        
+
         # ════════════════════════════════════════════════════════
         # VERIFICACIÓN DEL STAR SCHEMA
         # ════════════════════════════════════════════════════════
         print("\n" + "=" * 60)
         print("📋 VERIFICACIÓN GOLD — Star Schema")
         print("=" * 60)
-        
+
         # dim_coins
         print("\n── dim_coins ──")
         spark.sql("""
@@ -338,7 +320,7 @@ if __name__ == "__main__":
             FROM cryptolake.gold.dim_coins
             ORDER BY price_range_pct DESC
         """).show(truncate=False)
-        
+
         # dim_dates sample
         print("── dim_dates (muestra) ──")
         spark.sql("""
@@ -347,7 +329,7 @@ if __name__ == "__main__":
             ORDER BY date_day DESC
             LIMIT 5
         """).show(truncate=False)
-        
+
         # fact_market_daily — query analítica de ejemplo
         print("── fact_market_daily: Bitcoin últimos 7 días ──")
         spark.sql("""
@@ -364,7 +346,7 @@ if __name__ == "__main__":
             ORDER BY price_date DESC
             LIMIT 7
         """).show(truncate=False)
-        
+
         # Query analítica avanzada: ¿Qué coins tienen señal de compra?
         print("── Señales de compra potenciales (últimos datos) ──")
         spark.sql("""
@@ -384,8 +366,8 @@ if __name__ == "__main__":
             WHERE rn = 1
             ORDER BY combined_signal, coin_id
         """).show(truncate=False)
-        
+
     finally:
         spark.stop()
-    
+
     print("\n✅ Gold (Star Schema) completado!")

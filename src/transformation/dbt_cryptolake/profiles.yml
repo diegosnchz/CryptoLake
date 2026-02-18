@@ -35,3 +35,13 @@ cryptolake:
       schema: gold
       auth: NOSASL
       threads: 2
+
+    # CI: used for SQL compilation in GitHub Actions
+    ci:
+      type: spark
+      method: thrift
+      host: localhost
+      port: 10000
+      schema: gold
+      auth: NOSASL
+      threads: 1

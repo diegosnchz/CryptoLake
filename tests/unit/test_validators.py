@@ -1,0 +1,28 @@
+"""Unit tests for quality validator primitives."""
+
+from __future__ import annotations
+
+from src.quality.validators import CheckResult, CheckStatus
+
+
+def test_check_result_to_dict() -> None:
+    result = CheckResult(
+        check_name="test_check",
+        layer="bronze",
+        table_name="test_table",
+        status=CheckStatus.PASSED,
+        metric_value=100.0,
+        threshold=50.0,
+        message="All good",
+    )
+    payload = result.to_dict()
+    assert payload["status"] == "passed"
+    assert payload["metric_value"] == 100.0
+    assert "checked_at" in payload
+
+
+def test_check_status_values() -> None:
+    assert CheckStatus.PASSED.value == "passed"
+    assert CheckStatus.FAILED.value == "failed"
+    assert CheckStatus.WARNING.value == "warning"
+    assert CheckStatus.ERROR.value == "error"

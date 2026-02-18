@@ -17,3 +17,5 @@ target/
 dbt_packages/
 .terraform/
 *.tfstate
+*.egg-info/
+ce-ia-big-data/

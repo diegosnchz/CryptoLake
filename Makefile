@@ -1,4 +1,4 @@
-.PHONY: help up down down-clean logs status spark-shell kafka-topics
+.PHONY: help up down down-clean rebuild logs logs-kafka logs-spark logs-airflow logs-api logs-dashboard status spark-shell kafka-topics kafka-create-topics kafka-describe bronze-load silver-transform gold-transform init-namespaces pipeline dbt-run dbt-test dbt-all dbt-run-local dbt-test-local airflow-trigger airflow-status quality-check quality-bronze quality-silver quality-gold
 
 help: ## Mostrar esta ayuda
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | \
@@ -19,6 +19,8 @@ up: ## Arrancar todos los servicios
 	@echo "   Spark UI:        http://localhost:8082"
 	@echo "   Airflow:         http://localhost:8083  (user: admin / pass: admin)"
 	@echo "   Iceberg Catalog: http://localhost:8181"
+	@echo "   API Docs:        http://localhost:8000/docs"
+	@echo "   Dashboard:       http://localhost:8501"
 
 down: ## Parar todos los servicios (conserva datos)
 	docker compose down
@@ -45,6 +47,12 @@ logs-spark: ## Ver logs de Spark (master + worker)
 
 logs-airflow: ## Ver logs de Airflow
 	docker compose logs -f airflow-webserver airflow-scheduler
+
+logs-api: ## Ver logs de FastAPI
+	docker compose logs -f api
+
+logs-dashboard: ## Ver logs de Streamlit
+	docker compose logs -f dashboard
 
 status: ## Ver estado de los servicios
 	@docker compose ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}"
@@ -100,7 +108,33 @@ pipeline: ## Ejecutar pipeline completo: Bronze → Silver → Gold
 #	$(MAKE) gold-transform
 	$(MAKE) dbt-run
 	$(MAKE) dbt-test
+	$(MAKE) quality-check
 	@echo "✅ Pipeline completado!"
+
+# ── Data Quality (Fase 7) ─────────────────────────────────
+quality-check: ## Ejecutar todos los checks de calidad (bronze+silver+gold)
+	docker exec cryptolake-spark-master \
+	    /opt/spark/bin/spark-submit \
+	    /opt/spark/work/src/quality/run_quality_checks.py \
+	    --layer all
+
+quality-bronze: ## Ejecutar checks de Bronze
+	docker exec cryptolake-spark-master \
+	    /opt/spark/bin/spark-submit \
+	    /opt/spark/work/src/quality/run_quality_checks.py \
+	    --layer bronze
+
+quality-silver: ## Ejecutar checks de Silver
+	docker exec cryptolake-spark-master \
+	    /opt/spark/bin/spark-submit \
+	    /opt/spark/work/src/quality/run_quality_checks.py \
+	    --layer silver
+
+quality-gold: ## Ejecutar checks de Gold
+	docker exec cryptolake-spark-master \
+	    /opt/spark/bin/spark-submit \
+	    /opt/spark/work/src/quality/run_quality_checks.py \
+	    --layer gold
 
 # ── dbt (via contenedor Airflow, consistente con el pipeline) ──
 dbt-run: ## Ejecutar modelos dbt (staging → gold)

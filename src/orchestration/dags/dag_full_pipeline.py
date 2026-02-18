@@ -14,12 +14,12 @@ Timeout: 1 hora máximo por task
 
 Ejecución manual: También se puede trigger desde la UI de Airflow.
 """
+
 from datetime import datetime, timedelta
 
 from airflow import DAG
 from airflow.operators.bash import BashOperator
 from airflow.utils.task_group import TaskGroup
-
 
 # ================================================================
 # Configuración por defecto para todas las tareas del DAG.
@@ -28,20 +28,15 @@ from airflow.utils.task_group import TaskGroup
 default_args = {
     # Nombre del dueño (aparece en la UI de Airflow)
     "owner": "cryptolake",
-
     # depends_on_past=False: cada ejecución es independiente.
     # Si ayer falló, hoy se ejecuta igualmente.
     "depends_on_past": False,
-
     # No enviar emails al fallar (requeriría configurar SMTP)
     "email_on_failure": False,
-
     # Si una tarea falla, reintenta 2 veces
     "retries": 2,
-
     # Espera 5 minutos entre reintentos
     "retry_delay": timedelta(minutes=5),
-
     # Si una tarea tarda más de 1 hora, se cancela
     "execution_timeout": timedelta(hours=1),
 }
@@ -56,33 +51,24 @@ default_args = {
 with DAG(
     # ID único del DAG (aparece en la UI de Airflow)
     dag_id="cryptolake_full_pipeline",
-
     default_args=default_args,
-
     description="Pipeline completo: Ingesta → Bronze → Silver → Gold → Quality",
-
     # Schedule en formato cron: "minuto hora día mes día_semana"
     # "0 6 * * *" = a las 06:00, todos los días, todos los meses
     schedule="0 6 * * *",
-
     # Fecha desde la que Airflow consideraría ejecutar este DAG.
     # Con catchup=False, NO ejecuta las fechas pasadas.
     start_date=datetime(2025, 1, 1),
-
     # catchup=False: No ejecutar retroactivamente para fechas pasadas.
     # Si activamos el DAG hoy, solo se ejecuta hoy, no intenta
     # ejecutar todos los días desde start_date.
     catchup=False,
-
     # Tags para filtrar en la UI de Airflow
     tags=["cryptolake", "production"],
-
     # doc_md: la docstring de este archivo aparece como documentación
     # del DAG en la UI de Airflow
     doc_md=__doc__,
-
 ) as dag:
-
     # ════════════════════════════════════════════════════════════
     # GRUPO 1: INGESTA BATCH
     # ════════════════════════════════════════════════════════════
@@ -91,23 +77,16 @@ with DAG(
     # dependencia entre ellas — una no necesita a la otra).
     # ════════════════════════════════════════════════════════════
     with TaskGroup("ingestion", tooltip="Descarga datos de APIs externas") as ingestion_group:
-
         extract_coingecko = BashOperator(
             task_id="extract_coingecko",
             # Ejecutamos el extractor Python directamente en el contenedor de Airflow.
             # El módulo está montado en /opt/airflow/src/ via docker-compose volumes.
-            bash_command=(
-                "cd /opt/airflow && "
-                "python -m src.ingestion.batch.coingecko_extractor"
-            ),
+            bash_command=("cd /opt/airflow && python -m src.ingestion.batch.coingecko_extractor"),
         )
 
         extract_fear_greed = BashOperator(
             task_id="extract_fear_greed",
-            bash_command=(
-                "cd /opt/airflow && "
-                "python -m src.ingestion.batch.fear_greed_extractor"
-            ),
+            bash_command=("cd /opt/airflow && python -m src.ingestion.batch.fear_greed_extractor"),
         )
 
         # No hay ">>" entre ellas = se ejecutan en paralelo
@@ -124,7 +103,6 @@ with DAG(
     # o Livy, pero para desarrollo local esto es lo más simple.
     # ════════════════════════════════════════════════════════════
     with TaskGroup("bronze_load", tooltip="Cargar datos en Iceberg Bronze") as bronze_group:
-
         api_to_bronze = BashOperator(
             task_id="api_to_bronze",
             bash_command=(
@@ -140,7 +118,6 @@ with DAG(
     # Deduplicación, limpieza y MERGE INTO. Todo con Spark.
     # ════════════════════════════════════════════════════════════
     with TaskGroup("silver_processing", tooltip="Limpiar y deduplicar en Silver") as silver_group:
-
         bronze_to_silver = BashOperator(
             task_id="bronze_to_silver",
             bash_command=(
@@ -161,7 +138,6 @@ with DAG(
     # de producción (host: spark-thrift en vez de localhost).
     # ════════════════════════════════════════════════════════════
     with TaskGroup("gold_transformation", tooltip="Modelado dimensional con dbt") as gold_group:
-
         dbt_run = BashOperator(
             task_id="dbt_run",
             bash_command=(
@@ -184,14 +160,17 @@ with DAG(
     # ════════════════════════════════════════════════════════════
     # GRUPO 5: DATA QUALITY
     # ════════════════════════════════════════════════════════════
-    # Placeholder para Great Expectations (Fase 7).
-    # Por ahora, los tests de dbt son nuestra validación de calidad.
+    # Ejecutamos validadores custom sobre Bronze/Silver/Gold.
     # ════════════════════════════════════════════════════════════
     with TaskGroup("data_quality", tooltip="Validación de calidad de datos") as quality_group:
-
         quality_check = BashOperator(
-            task_id="quality_summary",
-            bash_command='echo "✅ Data quality checks passed (dbt tests ran in gold_transformation group)"',
+            task_id="quality_check_all_layers",
+            bash_command=(
+                "docker exec cryptolake-spark-master "
+                "/opt/spark/bin/spark-submit "
+                "/opt/spark/work/src/quality/run_quality_checks.py "
+                "--layer all"
+            ),
         )
 
     # ════════════════════════════════════════════════════════════

@@ -1,47 +1,47 @@
-﻿# Requisitos del profesor para CryptoLake (fases 1-6)
+# Re-ingesta de requisitos del profesor (versión actual)
 
-## Alcance y fuente
-- Fuente unica de requisitos: `profesor_ref/cryptolake-general-guide.md`, `profesor_ref/cryptolake-fases-1-2.md`, `profesor_ref/cryptolake-fases-3-4.md`, `profesor_ref/cryptolake-fases-5-6.md`.
-- Este documento esta actualizado al estado post-adaptacion (2026-02-16).
-- Criterio: cumplir el marco del profesor sin romper el dominio actual del alumno (`futures_trades` y `ohlcv_1m`).
+## Fuente y alcance
+- Fuente exclusiva revisada en esta regeneración:
+  - `ce-ia-big-data-main/ce-ia-big-data-main/cryptolake-fases-1-2.md`
+  - `ce-ia-big-data-main/ce-ia-big-data-main/cryptolake-fases-3-4.md`
+  - `ce-ia-big-data-main/ce-ia-big-data-main/cryptolake-fases-5-6.md`
+- `cryptolake-general-guide.md` se toma solo como contexto (no como fuente normativa).
 
 ## Checklist por fases
 
-### Fase 1-2 (infraestructura y base tecnica)
+### Fases 1-2
 
-| ID | Requisito accionable | Evidencia (profesor_ref) | Estado en repo alumno |
-|---|---|---|---|
-| F12-01 | Docker Compose con MinIO, Iceberg REST, Kafka, Kafka UI, Spark master/worker, Airflow webserver/scheduler + Postgres | `profesor_ref/cryptolake-fases-1-2.md:517`, `:556`, `:597`, `:621`, `:653`, `:670`, `:688`, `:728`, `:769` | Cumple |
-| F12-02 | Spark configurado para Iceberg REST + MinIO (catalogo, S3 endpoint, extensiones Iceberg) | `profesor_ref/cryptolake-fases-1-2.md:459`, `:461`, `:470`, `:478` | Cumple |
-| F12-03 | Makefile con ciclo base (`up/down/logs/status/spark-shell`) | `profesor_ref/cryptolake-fases-1-2.md:809`, `:817`, `:833`, `:840`, `:849`, `:851` | Cumple |
-| F12-04 | Creacion/verificacion de namespaces Iceberg `bronze/silver/gold` | `profesor_ref/cryptolake-fases-1-2.md:942`, `:943`, `:944`, `:947` | Cumple |
-| F12-05 | Comprobaciones iniciales de salud de servicios | `profesor_ref/cryptolake-fases-1-2.md:1968` | Cumple |
+| ID | Requisito (profesor) | Ruta exacta + sección | Estado alumno | ¿Cambió vs versión anterior? |
+|---|---|---|---|---|
+| F12-01 | Stack base con MinIO, Iceberg REST, Kafka/Kafka UI, Spark master/worker, Airflow + Postgres en `docker-compose.yml` | `ce-ia-big-data-main/ce-ia-big-data-main/cryptolake-fases-1-2.md` → **2.6 — Crear el Docker Compose completo** | Cumple | No (mismo alcance técnico) |
+| F12-02 | Configuración Spark para Iceberg REST + MinIO (catalog, endpoint S3, extensiones Iceberg) | `.../cryptolake-fases-1-2.md` → **2.4 — Crear el Dockerfile de Spark con soporte para Iceberg** | Cumple | No |
+| F12-03 | Comandos base de operación en Makefile (`up/down/logs/status/spark-shell`) | `.../cryptolake-fases-1-2.md` → **2.7 — Crear el Makefile** | Cumple | No |
+| F12-04 | Creación/verificación de namespaces Iceberg `bronze/silver/gold` | `.../cryptolake-fases-1-2.md` → **2.10 — Probar Spark con Iceberg** | Cumple | No |
+| F12-05 | Checks de salud inicial del entorno | `.../cryptolake-fases-1-2.md` → **2.9 — Verificar que todo funciona** | Cumple | No |
 
-### Fase 3-4 (Bronze -> Silver -> Gold)
+### Fases 3-4
 
-| ID | Requisito accionable | Evidencia (profesor_ref) | Estado en repo alumno |
-|---|---|---|---|
-| F34-01 | Job de carga Bronze desde APIs batch (`api_to_bronze.py`) | `profesor_ref/cryptolake-fases-3-4.md:132`, `:488`, `:524` | Parcial |
-| F34-02 | Tablas Bronze Iceberg creadas explicitamente y carga append | `profesor_ref/cryptolake-fases-3-4.md:334`, `:354`, `:399`, `:415` | Parcial |
-| F34-03 | Job Bronze -> Silver con limpieza/dedup y estrategia de upsert tipo `MERGE INTO` | `profesor_ref/cryptolake-fases-3-4.md:660`, `:787`, `:793`, `:838` | Parcial |
-| F34-04 | Gold en formato star schema (dims + fact) | `profesor_ref/cryptolake-fases-3-4.md:904`, `:959`, `:1012`, `:1075` | Cumple |
-| F34-05 | Make targets de pipeline medallion (`bronze-load`, `silver-transform`, `gold-transform`, `pipeline`) | `profesor_ref/cryptolake-fases-3-4.md:524`, `:529`, `:534`, `:541`, `:1300` | Parcial |
+| ID | Requisito (profesor) | Ruta exacta + sección | Estado alumno | ¿Cambió vs versión anterior? |
+|---|---|---|---|---|
+| F34-01 | Job batch `api_to_bronze.py` para cargar APIs en Bronze | `ce-ia-big-data-main/ce-ia-big-data-main/cryptolake-fases-3-4.md` → **5.3 — Script: Cargar datos de APIs en Iceberg Bronze** | Parcial | No (sigue priorizado streaming del alumno) |
+| F34-02 | Tablas Bronze explícitas + estrategia `append` | `.../cryptolake-fases-3-4.md` → **5.3 — Script: Cargar datos de APIs en Iceberg Bronze** | Parcial | No |
+| F34-03 | Transformación Bronze→Silver con limpieza/dedup + `MERGE INTO` incremental | `.../cryptolake-fases-3-4.md` → **6.3 — Script: Bronze → Silver** | Parcial | No |
+| F34-04 | Capa Gold en star schema (dimensiones + fact table) | `.../cryptolake-fases-3-4.md` → **6.5 — Script: Silver → Gold (Modelado Dimensional)** | Cumple | No |
+| F34-05 | Targets de Makefile para medallion (`bronze-load`, `silver-transform`, `gold-transform`, `pipeline`) | `.../cryptolake-fases-3-4.md` → **5.5 — Añadir comandos al Makefile** y **6.7 — Ejecutar el pipeline completo** | Parcial | No |
 
-### Fase 5-6 (dbt + Airflow)
+### Fases 5-6
 
-| ID | Requisito accionable | Evidencia (profesor_ref) | Estado en repo alumno |
-|---|---|---|---|
-| F56-01 | Servicio `spark-thrift` en Docker Compose (puerto `10000`) y reutilizacion de imagen Spark | `profesor_ref/cryptolake-fases-5-6.md:99`, `:103`, `:120`, `:142` | Cumple |
-| F56-02 | Proyecto dbt completo: `dbt_project.yml`, `profiles.yml`, `models/sources.yml`, staging + marts | `profesor_ref/cryptolake-fases-5-6.md:210`, `:232`, `:301`, `:358`, `:507`, `:617`, `:732` | Cumple |
-| F56-03 | Macros dbt `generate_schema_name` y `create_table_as` para schemas/LOCATION Iceberg | `profesor_ref/cryptolake-fases-5-6.md:426`, `:463` | Cumple |
-| F56-04 | Tests dbt (`schema.yml` + tests SQL custom) | `profesor_ref/cryptolake-fases-5-6.md:882`, `:947`, `:968` | Cumple |
-| F56-05 | Targets Make para dbt (`dbt-run`, `dbt-test` y equivalente compuesto) | `profesor_ref/cryptolake-fases-5-6.md:1088`, `:1091`, `:1094` | Cumple |
-| F56-06 | DAG maestro `cryptolake_full_pipeline` con secuencia ingestion -> bronze -> silver -> dbt run/test -> quality | `profesor_ref/cryptolake-fases-5-6.md:1303`, `:1353`, `:1460`, `:1468`, `:1501` | Cumple |
-| F56-07 | Comandos Airflow para trigger y estado del DAG full pipeline | `profesor_ref/cryptolake-fases-5-6.md:1582`, `:1586` | Cumple |
+| ID | Requisito (profesor) | Ruta exacta + sección | Estado alumno | ¿Cambió vs versión anterior? |
+|---|---|---|---|---|
+| F56-01 | Servicio `spark-thrift` en compose (puerto 10000) reutilizando imagen Spark | `ce-ia-big-data-main/ce-ia-big-data-main/cryptolake-fases-5-6.md` → **7.2 — Añadir Spark Thrift Server al Docker Compose** | Cumple | No |
+| F56-02 | Proyecto dbt completo (`dbt_project.yml`, `profiles.yml`, `models/sources.yml`, staging/marts) | `.../cryptolake-fases-5-6.md` → **7.4 a 7.9** | Cumple | No |
+| F56-03 | Macros dbt (`generate_schema_name`, `create_table_as`) para namespaces/LOCATION Iceberg | `.../cryptolake-fases-5-6.md` → **7.7 — Crear macros personalizadas** | Cumple | No |
+| F56-04 | Tests dbt (`schema.yml` + tests SQL custom) | `.../cryptolake-fases-5-6.md` → **7.10 — Crear tests de datos** | Cumple | No |
+| F56-05 | Targets Make para dbt (`dbt-run`, `dbt-test` y compuesto) | `.../cryptolake-fases-5-6.md` → **7.13 — Actualizar Makefile y hacer commit** | Cumple | No |
+| F56-06 | DAG maestro `cryptolake_full_pipeline` con secuencia ingest→bronze→silver→dbt run/test→quality | `.../cryptolake-fases-5-6.md` → **8.4 — Crear el DAG Master** | Cumple | No |
+| F56-07 | Trigger y consulta de estado del DAG full pipeline | `.../cryptolake-fases-5-6.md` → **8.6 — Activar y ejecutar el DAG en Airflow** y **8.7 — Actualizar Makefile y hacer commit** | Cumple | No |
 
-## Observaciones de adaptacion conservadora
-- Se mantiene la arquitectura de streaming existente (Kafka -> Bronze) y se anade la ruta profesor (dbt + Thrift + DAG maestro).
-- No se renombraron tablas del dominio actual; dbt se adapto a `cryptolake.silver.ohlcv_1m`.
-- La carga batch de APIs del profesor (`daily_prices/fear_greed`) se mantiene como opcion de ingesta, no como reemplazo del flujo principal.
-- Kafka se mantiene en modo ZooKeeper (desviacion respecto a KRaft en fase 1-2 del profesor), documentado en `docs/adr/0001-kafka-mode.md`.
-- Decisiones ambiguas documentadas en `docs/adr/ADR-0001-profesor-adaptacion.md`.
+## Notas de actualización frente a la versión anterior
+- Se reemplaza la referencia histórica `profesor_ref/*` por la ruta vigente `ce-ia-big-data-main/ce-ia-big-data-main/*`.
+- No se detectan cambios funcionales nuevos en requisitos de fases 1-6 que obliguen a alterar el código ya adaptado del alumno.
+- Se mantiene como brecha conocida el track batch canónico de fases 3-4 (API batch puro), dado que el repo del alumno prioriza su flujo streaming existente.
